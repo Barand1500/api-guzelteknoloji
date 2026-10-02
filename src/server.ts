@@ -7,6 +7,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { readStore, writeStore, type RecordItem } from './store.js';
+import { initDb, listCategories, pool } from './db.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4010);
@@ -67,6 +68,28 @@ app.get('/api/records', publicApiGuard, async (_req, res) => {
 });
 app.get('/admin/records', auth, async (_req, res) => res.json({ success: true, data: (await readStore()).records }));
 
+app.get('/admin/categories', auth, async (_req, res) => res.json({ success: true, data: await listCategories() }));
+app.post('/admin/categories', auth, async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  const slug = String(req.body?.slug || name).trim().toLowerCase().replace(/[^a-z0-9ğüşöçı]+/gi, '-').replace(/^-|-$/g, '');
+  if (!name || !slug) return res.status(400).json({ success: false, message: 'Kategori adı gerekli' });
+  try { await initDb(); const [result] = await pool.query<any>(`INSERT INTO api_categories (name,slug,active) VALUES (?,?,1)`, [name, slug]); return res.status(201).json({ success: true, data: { id: result.insertId, name, slug, active: true } }); }
+  catch { return res.status(400).json({ success: false, message: 'Bu kategori veya adres zaten kullanılıyor' }); }
+});
+app.patch('/admin/categories/:id', auth, async (req, res) => {
+  await initDb(); await pool.query(`UPDATE api_categories SET name=COALESCE(?,name), active=COALESCE(?,active) WHERE id=?`, [req.body?.name ?? null, typeof req.body?.active === 'boolean' ? Number(req.body.active) : null, Number(req.params.id)]); res.json({ success: true });
+});
+app.delete('/admin/categories/:id', auth, async (req, res) => { await initDb(); await pool.query(`DELETE FROM api_categories WHERE id=?`, [Number(req.params.id)]); res.json({ success: true }); });
+
+app.get('/admin/api-keys', auth, async (_req, res) => { await initDb(); const [rows] = await pool.query<any[]>(`SELECT id,project_name projectName,api_key apiKey,active,created_at createdAt FROM api_keys ORDER BY created_at DESC`); res.json({ success: true, data: rows }); });
+app.post('/admin/api-keys', auth, async (req, res) => { const projectName=String(req.body?.projectName||'').trim(); if(!projectName)return res.status(400).json({success:false,message:'Proje adı gerekli'}); await initDb(); const item={id:randomUUID(),projectName,apiKey:`gtk_${randomUUID().replace(/-/g,'')}`,active:true}; await pool.query(`INSERT INTO api_keys (id,project_name,api_key,active) VALUES (?,?,?,1)`,[item.id,item.projectName,item.apiKey]); res.status(201).json({success:true,data:item}); });
+app.patch('/admin/api-keys/:id', auth, async (req,res)=>{await initDb();await pool.query(`UPDATE api_keys SET active=? WHERE id=?`,[Number(Boolean(req.body?.active)),req.params.id]);res.json({success:true});});
+app.delete('/admin/api-keys/:id', auth, async (req,res)=>{await initDb();await pool.query(`DELETE FROM api_keys WHERE id=?`,[req.params.id]);res.json({success:true});});
+
+app.get('/admin/media', auth, async (_req,res)=>{await initDb();const [rows]=await pool.query<any[]>(`SELECT id,name,url,mime_type mimeType,active,created_at createdAt FROM api_media ORDER BY created_at DESC`);res.json({success:true,data:rows});});
+app.post('/admin/media', auth, async (req,res)=>{const name=String(req.body?.name||'').trim(),url=String(req.body?.url||'').trim();if(!name||!url)return res.status(400).json({success:false,message:'Dosya adı ve URL gerekli'});await initDb();const id=randomUUID();await pool.query(`INSERT INTO api_media (id,name,url,mime_type,active) VALUES (?,?,?,?,1)`,[id,name,url,String(req.body?.mimeType||'image')]);res.status(201).json({success:true,data:{id,name,url,active:true}});});
+app.delete('/admin/media/:id', auth, async (req,res)=>{await initDb();await pool.query(`DELETE FROM api_media WHERE id=?`,[req.params.id]);res.json({success:true});});
+
 app.post('/admin/records', auth, async (req, res) => {
   const name = String(req.body?.name || '').trim();
   const value = String(req.body?.value || '').trim();
@@ -104,6 +127,15 @@ app.get('/api/records/:name', publicApiGuard, async (req, res) => {
   const item = store.records.find((record) => record.active && record.name === req.params.name);
   if (!item) return res.status(404).json({ success: false, message: 'Veri bulunamadı' });
   res.json({ success: true, data: item });
+});
+
+app.get('/api/categories/:slug', publicApiGuard, async (req, res) => {
+  await initDb();
+  const [categories] = await pool.query<any[]>(`SELECT id,name,slug FROM api_categories WHERE slug=? AND active=1 LIMIT 1`, [req.params.slug]);
+  const category = categories[0];
+  if (!category) return res.status(404).json({ success: false, message: 'Kategori bulunamadı' });
+  const [rows] = await pool.query<any[]>(`SELECT id,data,updated_at updatedAt FROM api_category_rows WHERE category_id=? AND active=1 ORDER BY updated_at DESC`, [category.id]);
+  res.json({ success: true, category, data: rows.map((row) => ({ ...row, data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data })) });
 });
 
 const publicDir = path.resolve(root, '../public');

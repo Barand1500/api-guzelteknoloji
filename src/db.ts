@@ -12,6 +12,8 @@ export async function initDb() {
   await pool.query(`CREATE TABLE IF NOT EXISTS api_records (id CHAR(36) PRIMARY KEY, category_id INT NOT NULL, name VARCHAR(180) NOT NULL, value LONGTEXT NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT fk_api_record_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_category_columns (id INT AUTO_INCREMENT PRIMARY KEY, category_id INT NOT NULL, name VARCHAR(120) NOT NULL, field_type VARCHAR(24) NOT NULL DEFAULT 'text', position INT NOT NULL DEFAULT 0, UNIQUE KEY uq_category_column (category_id,name), CONSTRAINT fk_api_column_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_category_rows (id CHAR(36) PRIMARY KEY, category_id INT NOT NULL, data JSON NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT fk_api_row_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_keys (id CHAR(36) PRIMARY KEY, project_name VARCHAR(160) NOT NULL, api_key VARCHAR(96) NOT NULL UNIQUE, active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_media (id CHAR(36) PRIMARY KEY, name VARCHAR(180) NOT NULL, url TEXT NOT NULL, mime_type VARCHAR(100) NOT NULL DEFAULT 'image', active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
 }
 
 export async function listCategories(): Promise<Category[]> {

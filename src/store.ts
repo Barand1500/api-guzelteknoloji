@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { initDb, listRecords, pool, type RecordItem } from './db.js';
+import { initDb, listCategories, listRecords, pool, type Category, type RecordItem } from './db.js';
 export type { RecordItem } from './db.js';
 
-export type Store = { enabled: boolean; records: RecordItem[] };
+export type Store = { enabled: boolean; categories: Category[]; records: RecordItem[] };
 let ready: Promise<void> | null = null;
 async function ensure() { if (!ready) ready = initDb(); await ready; }
 
@@ -10,7 +10,7 @@ export async function readStore(): Promise<Store> {
   await ensure();
   await pool.query(`CREATE TABLE IF NOT EXISTS api_settings (id INT PRIMARY KEY, value VARCHAR(16) NOT NULL)`);
   const [rows] = await pool.query<any[]>(`SELECT value FROM api_settings WHERE id=1`);
-  return { enabled: rows[0]?.value !== '0', records: await listRecords() };
+  return { enabled: rows[0]?.value !== '0', categories: await listCategories(), records: await listRecords() };
 }
 export async function writeStore(store: Store) {
   await ensure();
