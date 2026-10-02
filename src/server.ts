@@ -72,7 +72,7 @@ app.post('/admin/records', auth, async (req, res) => {
   const value = String(req.body?.value || '').trim();
   if (!name || !value) return res.status(400).json({ success: false, message: 'Ad ve değer zorunludur' });
   const store = await readStore();
-  const item: RecordItem = { id: randomUUID(), name, value, active: req.body?.active !== false, updatedAt: new Date().toISOString() };
+  const item: RecordItem = { id: randomUUID(), categoryId: 0, name, value, active: req.body?.active !== false, updatedAt: new Date().toISOString() };
   store.records.unshift(item);
   await writeStore(store);
   res.status(201).json({ success: true, data: item });
