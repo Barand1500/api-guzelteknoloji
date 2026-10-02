@@ -32,4 +32,4 @@
 .password-wrap.auth-field>input{width:100%;height:100%;padding:14px 70px 8px 14px;border:0;border-radius:12px;background:transparent;color:#18263a;font-size:14px;outline:none}
 .password-wrap.auth-field>button{position:absolute;right:5px;top:5px;height:48px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#77869a;font-size:11px;font-weight:750;cursor:pointer}
 .password-wrap.auth-field>button:hover{color:#2478ed;background:#f3f7fd}
-@media(max-width:720px){.login-shell{min-height:0;width:min(100%,470px)}.login-visual img{max-height:260px}.login-heading{margin:28px 0 22px}.login-heading h1{font-size:27px}}
+@media(max-width:720px){.login-shell{min-height:0;width:min(100%,470px)}.login-visual img{max-height:260px}.visual-caption{display:none}.login-heading{margin:28px 0 22px}.login-heading h1{font-size:27px}}
