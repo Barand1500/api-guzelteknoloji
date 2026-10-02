@@ -25,6 +25,10 @@ pm2 startup
 
 Alan adı reverse proxy ile bu servisin portuna yönlendirilmelidir. İlk giriş bilgileri `.env` içinden okunur; kurulumdan sonra değiştirin.
 
+## SMTP quick login
+
+The "Hizli Giris" option emails a one-time 6-digit code to `ADMIN_EMAIL`. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and optional `SMTP_FROM` in the server `.env`. Codes expire after 5 minutes, allow up to 5 attempts, and can be requested once per minute.
+
 ## Git ile deploy
 
 Sunucuda proje bir kez klonlandıktan sonra:

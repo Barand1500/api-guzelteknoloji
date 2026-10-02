@@ -32,4 +32,9 @@
 .password-wrap.auth-field>input{width:100%;height:100%;padding:14px 70px 8px 14px;border:0;border-radius:12px;background:transparent;color:#18263a;font-size:14px;outline:none}
 .password-wrap.auth-field>button{position:absolute;right:5px;top:5px;height:48px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#77869a;font-size:11px;font-weight:750;cursor:pointer}
 .password-wrap.auth-field>button:hover{color:#2478ed;background:#f3f7fd}
+.login-quick{background:linear-gradient(135deg,#1768df,#1256c2);box-shadow:0 8px 18px #1768df24}
+.login-quick:hover:not(:disabled){filter:brightness(1.08);transform:translateY(-1px)}
+.login-back{justify-self:center;padding:7px 10px;border:0;background:transparent;color:#2478ed;font-size:13px;font-weight:650;cursor:pointer}
+.login-back:hover:not(:disabled){color:#1256c2;text-decoration:underline}
+.login-back:disabled{opacity:.6;cursor:wait}
 @media(max-width:720px){.login-shell{min-height:0;width:min(100%,470px)}.login-visual img{max-height:260px}.visual-caption{display:none}.login-heading{margin:28px 0 22px}.login-heading h1{font-size:27px}}
