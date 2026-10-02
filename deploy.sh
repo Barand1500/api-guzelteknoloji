@@ -8,8 +8,7 @@ cd "$APP_DIR"
 git fetch origin "$BRANCH"
 git checkout "$BRANCH"
 git reset --hard "origin/$BRANCH"
-npm install --omit=dev
-npm install --no-save typescript
+npm install
 npm run build
 
 if pm2 describe guzel-api >/dev/null 2>&1; then
