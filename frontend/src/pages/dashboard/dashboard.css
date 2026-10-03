@@ -55,17 +55,18 @@
 .dash-category-grid.list { display: block; overflow-x: auto; border: 1px solid #e0e8f1; border-radius: 14px; background: #fff; }
 .dash-list-head, .dash-category-grid.list .dash-category-card { min-width: 870px; display: grid; grid-template-columns: minmax(190px, 1.15fr) minmax(280px, 1.75fr) 130px 185px; align-items: center; }
 .dash-list-head { min-height: 44px; padding: 0 17px; border-bottom: 1px solid #e4ebf3; background: #f8fafc; color: #8390a2; text-transform: uppercase; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
-.dash-category-grid.list .dash-category-card { min-height: 78px; border: 0; border-bottom: 1px solid #e9eef4; border-radius: 0; box-shadow: none; }
+.dash-category-grid.list .dash-category-card { min-height: 78px; padding: 0 17px; border: 0; border-bottom: 1px solid #e9eef4; border-radius: 0; box-shadow: none; }
 .dash-category-grid.list .dash-category-card:last-child { border-bottom: 0; }
 .dash-category-grid.list .dash-category-card:hover { background: #fafcff; box-shadow: none; }
-.dash-category-grid.list .dash-card-main { padding: 10px 17px; }
+.dash-category-grid.list .dash-card-main { padding: 10px 0; }
 .dash-category-grid.list .dash-icon { width: 36px; height: 36px; }
 .dash-category-grid.list .dash-card-main h3 { font-size: 13px; }
-.dash-category-grid.list .dash-card-endpoint { display: block; padding: 10px 13px; }
+.dash-category-grid.list .dash-card-endpoint { display: block; padding: 10px 0; }
 .dash-category-grid.list .dash-card-endpoint > span { display: none; }
 .dash-category-grid.list .dash-card-endpoint button { padding: 7px 9px; }
-.dash-category-grid.list .dash-api-switch { margin: 0 10px; }
-.dash-category-grid.list .dash-card-actions { justify-content: flex-end; padding: 10px 17px 10px 0; }
+.dash-category-grid.list .dash-api-switch { margin: 0; }
+.dash-category-grid.list .dash-api-switch > span:last-child { display: none; }
+.dash-category-grid.list .dash-card-actions { justify-content: flex-end; padding: 10px 0; }
 .dash-empty { display: grid; justify-items: center; padding: 55px 20px; border: 1px dashed #cad8e8; border-radius: 14px; background: #fff; color: #7a8798; text-align: center; }
 .dash-empty h3 { margin: 10px 0 3px; color: #26384e; font-size: 17px; }.dash-empty p { margin: 0 0 14px; font-size: 13px; }
 .dash-empty button { display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border: 0; border-radius: 9px; background: #1f6fd8; color: #fff; font-size: 12px; font-weight: 700; }
