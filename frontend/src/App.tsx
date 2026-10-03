@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
 } from "react";
 import LiquidCarveButton from "./components/LiquidCarveButton";
+import CategoryEditor from "./components/CategoryEditor";
 type View = "dashboard" | "new" | "keys" | "media" | "manage" | "settings";
 type Category = { id: number; name: string; slug: string; active: boolean };
 type State = { enabled: boolean; categories: Category[] };
@@ -51,6 +52,7 @@ export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem("gtk_token")),
     [view, setView] = useState<View>("dashboard"),
     [selected, setSelected] = useState<Category | null>(null),
+    [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("gtk_sidebar_collapsed") === "true"),
     [adminTheme, setAdminTheme] = useState<"light" | "dark">(
       () => localStorage.getItem("gtk_admin_theme") === "light" ? "light" : "dark",
     );
@@ -81,6 +83,8 @@ export default function App() {
         localStorage.removeItem("gtk_token");
         setToken(null);
       }}
+      sidebarCollapsed={sidebarCollapsed}
+      toggleSidebar={() => setSidebarCollapsed(value => { const next = !value; localStorage.setItem("gtk_sidebar_collapsed", String(next)); return next; })}
     >
       {view === "dashboard" ? (
         <Dashboard
@@ -89,6 +93,7 @@ export default function App() {
             setSelected(c);
             setView("manage");
           }}
+          create={() => setView("new")}
         />
       ) : view === "new" ? (
         <NewApi token={token} done={() => go("dashboard")} />
@@ -344,6 +349,8 @@ function Layout({
   theme,
   toggleTheme,
   logout,
+  sidebarCollapsed,
+  toggleSidebar,
   children,
 }: {
   view: View;
@@ -351,8 +358,22 @@ function Layout({
   theme: "light" | "dark";
   toggleTheme: () => void;
   logout: () => void;
+  sidebarCollapsed: boolean;
+  toggleSidebar: () => void;
   children: React.ReactNode;
 }) {
+  const [headerPinned, setHeaderPinned] = useState(true);
+  const [footerPinned, setFooterPinned] = useState(true);
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const [footerVisible, setFooterVisible] = useState(true);
+  useEffect(() => {
+    const onMove = (event: MouseEvent) => {
+      if (!headerPinned) setHeaderVisible(event.clientY < 24);
+      if (!footerPinned) setFooterVisible(window.innerHeight - event.clientY < 24);
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, [headerPinned, footerPinned]);
   const titles: Record<View, string> = {
     dashboard: "Genel Yönetim",
     new: "Yeni API",
@@ -362,18 +383,10 @@ function Layout({
     settings: "Ayarlar",
   };
   return (
-    <div className={`layout admin-theme-${theme}`}>
-      <aside className="sidebar">
-        <Logo />
+    <div className={`layout admin-theme-${theme} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <aside className="sidebar" onDoubleClick={toggleSidebar} title="Daraltmak veya genişletmek için çift tıklayın">
+        <div className="sidebar-brand"><span className="brand-mark">G</span><span className="brand-name"><Logo /></span></div>
         <nav className="nav">
-          <Nav
-            id="new"
-            view={view}
-            set={setView}
-            icon="+"
-            label="Yeni"
-            extra="new"
-          />
           <Nav
             id="dashboard"
             view={view}
@@ -403,7 +416,7 @@ function Layout({
         </div>
       </aside>
       <main className="main">
-        <header className="header">
+        <header className={`header app-header ${headerVisible || headerPinned ? "bar-visible" : "bar-hidden"}`} onDoubleClick={() => { setHeaderPinned(value => !value); setHeaderVisible(true); }} title="Sabitlemek veya otomatik gizlemek için çift tıklayın">
           <div>
             <div className="eyebrow">Web Service Console</div>
             <h1>{titles[view]}</h1>
@@ -417,6 +430,9 @@ function Layout({
           </div>
         </header>
         {children}
+        <footer className={`app-footer ${footerVisible || footerPinned ? "bar-visible" : "bar-hidden"}`} onDoubleClick={() => { setFooterPinned(value => !value); setFooterVisible(true); }} title="Sabitlemek veya otomatik gizlemek için çift tıklayın">
+          <span><i className="footer-status-dot"/> API yönetim servisi</span><span>api.guzelteknoloji.com</span><span>{footerPinned ? "Sabit" : "Otomatik gizleme"}</span>
+        </footer>
       </main>
     </div>
   );
@@ -477,7 +493,7 @@ async function compressLoginImage(file: File): Promise<string> {
 }
 function TrashIcon(){return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5.5 7l1 13h11l1-13M9 7V4h6v3"/></svg>}
 function CopyIcon(){return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>}
-function Dashboard({token,manage}:{token:string;manage:(c:Category)=>void}){
+function Dashboard({token,manage,create}:{token:string;manage:(c:Category)=>void;create:()=>void}){
  const [state,setState]=useState<State|null>(null),[mode,setMode]=useState<"grid"|"list">("grid"),[query,setQuery]=useState(""),[copied,setCopied]=useState<number|null>(null),[busy,setBusy]=useState(false),[actionError,setActionError]=useState("");
  const load=useCallback(()=>request<State>("/admin/state",token).then(setState),[token]);useEffect(()=>{void load()},[load]);
  const categories=useMemo(()=>(state?.categories||[]).filter(c=>(c.name+" "+c.slug).toLowerCase().includes(query.trim().toLowerCase())),[state,query]);
@@ -487,6 +503,7 @@ function Dashboard({token,manage}:{token:string;manage:(c:Category)=>void}){
  async function remove(c:Category){if(!confirm("\u201c"+c.name+"\u201d kategorisi ve i\u00e7indeki t\u00fcm veriler silinsin mi?"))return;setBusy(true);setActionError("");try{await request("/admin/categories/"+c.id,token,{method:"DELETE"});setState(s=>s?{...s,categories:s.categories.filter(x=>x.id!==c.id)}:s)}catch(e){setActionError((e as Error).message)}finally{setBusy(false)}}
  async function toggle(){setBusy(true);setActionError("");try{const enabled=!state!.enabled;await request("/admin/state",token,{method:"PATCH",body:JSON.stringify({enabled})});setState(s=>s?{...s,enabled}:s)}catch(e){setActionError((e as Error).message)}finally{setBusy(false)}}
  return <div className="dashboard-page">
+ <section className="category-create-card dashboard-reveal"><div className="create-card-mark"><span>＋</span></div><div className="create-card-copy"><div className="eyebrow">YENİ VERİ KAYNAĞI</div><h2>Yeni kategori oluştur</h2><p>Tablonu oluştur, sütunlarını ve kayıtlarını yönetmeye başla.</p></div><button className="btn create-category-button" onClick={create}>Kategori oluştur <span>→</span></button></section>
  <section className="overview-banner dashboard-reveal"><div className="overview-copy"><div className="eyebrow">API Y&#214;NET&#304;M ALANI</div><h2>Kategorileriniz tek yerde</h2><p>Payla&#351;&#305;lan API verilerinizi g&#246;r&#252;nt&#252;leyin ve y&#246;netin.</p></div><div className="service-control"><span className={"service-indicator "+(state.enabled?"is-on":"is-off")}/><div><strong>{state.enabled?"Servis \u00e7al\u0131\u015f\u0131yor":"Servis duraklat\u0131ld\u0131"}</strong><small>Genel API durumu</small></div><button className={"switch "+(state.enabled?"on":"")} disabled={busy} onClick={()=>void toggle()}>{state.enabled?"Durdur":"Ba\u015flat"}</button></div></section>
  <div className="dashboard-stats dashboard-reveal"><div><span className="stat-mark">▦</span><span><small>Kategori</small><strong>{state.categories.length}</strong></span></div><div><span className="stat-mark success">●</span><span><small>Aktif kategori</small><strong>{state.categories.filter(x=>x.active).length}</strong></span></div><div><span className={"stat-mark "+(state.enabled?"success":"muted-mark")}>⌁</span><span><small>Servis durumu</small><strong>{state.enabled?"A\u00e7\u0131k":"Kapal\u0131"}</strong></span></div></div>
  <section className="category-section dashboard-reveal"><div className="category-toolbar"><div><div className="eyebrow">VER&#304; KAYNAKLARI</div><h2>Kategoriler</h2></div><div className="category-tools"><label className="category-search"><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Kategori ara"/></label><div className="view-switch"><button className={mode==="grid"?"selected":""} onClick={()=>setMode("grid")} title="Kart g&#246;r&#252;n&#252;m&#252;">▦</button><button className={mode==="list"?"selected":""} onClick={()=>setMode("list")} title="Liste g&#246;r&#252;n&#252;m&#252;">☷</button></div></div></div>
@@ -494,22 +511,7 @@ function Dashboard({token,manage}:{token:string;manage:(c:Category)=>void}){
  :<div className="table-wrap category-list-wrap"><table className="table category-list"><thead><tr><th>Kategori</th><th>API u&#231; noktas&#305;</th><th>Durum</th><th>&#304;&#351;lemler</th></tr></thead><tbody>{categories.map(c=><tr key={c.id}><td><strong>{c.name}</strong></td><td><button className="endpoint-copy list-endpoint" onClick={()=>void copy(c)}><code>{endpoint(c)}</code><span>{copied===c.id?"Kopyaland\u0131":<CopyIcon/>}</span></button></td><td><span className={"category-status "+(c.active?"":"off")}><i/>{c.active?"Aktif":"Pasif"}</span></td><td className="list-actions"><button className="btn manage-button" onClick={()=>manage(c)}>Y&#246;net →</button><button className="icon-button delete-icon" onClick={()=>void remove(c)} title="Kategoriyi sil" aria-label="Kategoriyi sil" disabled={busy}><TrashIcon/></button></td></tr>)}</tbody></table></div>
  :<div className="empty category-empty"><span className="empty-icon">▦</span><h3>{query?"Eşleşen kategori yok":"Henüz kategori yok"}</h3><p>{query?"Arama ifadenizi değiştirip tekrar deneyin.":"İlk veri kategorinizi Yeni bölümünden oluşturabilirsiniz."}</p></div>}{actionError&&<div className="manager-error" role="alert">{actionError}</div>}</section></div>
 }
-function CategoryManager({token,category,back}:{token:string;category:Category;back:()=>void}){
- const [schema,setSchema]=useState<Schema|null>(null),[error,setError]=useState(""),[columnName,setColumnName]=useState(""),[adding,setAdding]=useState(false),[edit,setEdit]=useState<{rowId:string;columnId:number}|null>(null),[value,setValue]=useState(""),[saving,setSaving]=useState<string|null>(null);
- const load=useCallback(()=>request<Schema>("/admin/categories/"+category.id+"/schema",token).then(setSchema).catch(e=>setError(e.message)),[token,category.id]);useEffect(()=>{void load()},[load]);if(!schema)return <Loading/>;
- async function addColumn(e:FormEvent<HTMLFormElement>){e.preventDefault();const name=columnName.trim();if(!name||adding)return;setAdding(true);setError("");try{const col=await request<Column>("/admin/categories/"+category.id+"/columns",token,{method:"POST",body:JSON.stringify({name,fieldType:"text"})});setSchema(current=>current?{...current,columns:[...current.columns,col]}:current);setColumnName("")}catch(x){setError((x as Error).message)}finally{setAdding(false)}}
- async function addRow(){try{const result=await request<{id:string}>("/admin/categories/"+category.id+"/rows",token,{method:"POST",body:JSON.stringify({data:{},active:true})});const row:DataRow={id:result.id,data:{},active:true};setSchema(current=>current?{...current,rows:[row,...current.rows]}:current);if(schema?.columns[0])startEdit(row,schema.columns[0])}catch(x){setError((x as Error).message)}}
- function startEdit(row:DataRow,col:Column){setEdit({rowId:row.id,columnId:col.id});setValue(row.data[String(col.id)]||"")}
- async function saveCell(row:DataRow,col:Column){const k=String(col.id),v=value;setEdit(null);if((row.data[k]||"")===v)return;setSaving(row.id+":"+k);const data={...row.data,[k]:v};try{await request("/admin/categories/"+category.id+"/rows/"+row.id,token,{method:"PATCH",body:JSON.stringify({data,active:row.active})});setSchema(s=>s?{...s,rows:s.rows.map(r=>r.id===row.id?{...r,data}:r)}:s)}catch(x){setError((x as Error).message)}finally{setSaving(null)}}
- async function removeColumn(col:Column){if(!confirm("\u201c"+col.name+"\u201d s\u00fctunu ve i\u00e7indeki de\u011ferleri silmek istiyor musunuz?"))return;try{await request("/admin/categories/"+category.id+"/columns/"+col.id,token,{method:"DELETE"});setSchema(current=>current?{...current,columns:current.columns.filter(c=>c.id!==col.id),rows:current.rows.map(r=>{const data={...r.data};delete data[String(col.id)];return {...r,data}})}:current)}catch(x){setError((x as Error).message)}}
- async function removeRow(row:DataRow){if(!confirm("Bu veri satırı silinsin mi?"))return;try{await request("/admin/categories/"+category.id+"/rows/"+row.id,token,{method:"DELETE"});setSchema(current=>current?{...current,rows:current.rows.filter(r=>r.id!==row.id)}:current)}catch(x){setError((x as Error).message)}}
- async function toggleRow(row:DataRow){try{await request("/admin/categories/"+category.id+"/rows/"+row.id,token,{method:"PATCH",body:JSON.stringify({data:row.data,active:!row.active})});setSchema(current=>current?{...current,rows:current.rows.map(r=>r.id===row.id?{...r,active:!r.active}:r)}:current)}catch(x){setError((x as Error).message)}}
- return <div className="manager-page"><div className="manager-top manager-hero"><button className="btn soft" onClick={back}>&larr; Geri</button><div className="manager-title"><div className="eyebrow">KATEGOR&#304; TABLOSU</div><h2>{schema.category.name}</h2><code>GET /api/categories/{schema.category.slug}</code></div><button className={"switch "+(schema.category.active?"on":"")} onClick={async()=>{const active=!schema.category.active;try{await request("/admin/categories/"+category.id,token,{method:"PATCH",body:JSON.stringify({active})});setSchema(current=>current?{...current,category:{...current.category,active}}:current)}catch(x){setError((x as Error).message)}}}>{schema.category.active?"API a\u00e7\u0131k":"API kapal\u0131"}</button></div>
- <section className="panel schema-panel spreadsheet-panel"><div className="spreadsheet-heading"><div><div className="eyebrow">VER&#304;TABANI G&#214;R&#220;N&#220;M&#220;</div><h2>{schema.category.name} <span>tablosu</span></h2><p>H&#252;creyi d&#252;zenlemek i&#231;in &#231;ift t&#305;klay&#305;n. De&#287;i&#351;iklikler kaydedilince API verisine yans&#305;r.</p></div><div className="table-count"><strong>{schema.rows.length}</strong><span>sat&#305;r</span><i/><strong>{schema.columns.length}</strong><span>s&#252;tun</span></div></div>
- <div className="table-tools"><form className="column-add" onSubmit={addColumn}><input value={columnName} onChange={e=>setColumnName(e.target.value)} placeholder="Yeni s&#252;tun ad&#305; (&ouml;rn. &#220;lke kodu)" aria-label="Yeni s&#252;tun ad&#305;"/><button className="btn soft" disabled={!columnName.trim()||adding}>{adding?"Ekleniyor&#8230;":"+ S&#252;tun ekle"}</button></form><button className="btn" onClick={()=>void addRow()} disabled={!schema.columns.length}>＋ Sat&#305;r ekle</button></div>
- {schema.columns.length?<div className="table-wrap spreadsheet-wrap"><table className="table spreadsheet"><thead><tr><th className="row-number-head">#</th>{schema.columns.map(col=><th key={col.id}><span>{col.name}</span><button className="icon-button column-delete" onClick={()=>void removeColumn(col)} title="S&#252;tunu sil" aria-label={"S&#252;tunu sil: "+col.name}><TrashIcon/></button></th>)}<th>Durum</th><th className="row-action-head"/></tr></thead><tbody>{schema.rows.map((row,i)=><tr key={row.id}><td className="row-number">{i+1}</td>{schema.columns.map(col=>{const k=row.id+":"+col.id,isEditing=edit?.rowId===row.id&&edit.columnId===col.id;return <td key={col.id} className={"spreadsheet-cell "+(saving===k?"cell-saving":"")} onDoubleClick={()=>startEdit(row,col)} title="D&#252;zenlemek i&#231;in &#231;ift t&#305;klay&#305;n">{isEditing?<input autoFocus className="cell-editor" value={value} onChange={e=>setValue(e.target.value)} onBlur={()=>void saveCell(row,col)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();e.currentTarget.blur()}}}/>:<span className={!row.data[String(col.id)]?"cell-placeholder":""}>{row.data[String(col.id)]||"—"}</span>}</td>})}<td><button className={"switch compact "+(row.active?"on":"")} onClick={()=>void toggleRow(row)}>{row.active?"Aktif":"Kapal\u0131"}</button></td><td className="row-action-cell"><button className="icon-button delete-icon" onClick={()=>void removeRow(row)} title="Sat&#305;r&#305; sil" aria-label="Sat&#305;r&#305; sil"><TrashIcon/></button></td></tr>)}</tbody></table>{!schema.rows.length&&<div className="table-empty-state"><span>Hen&#252;z sat&#305;r yok</span><small>Tabloya ilk verinizi ekleyin.</small></div>}</div>:<div className="table-empty-state no-columns"><span>Tablo hen&#252;z olu&#351;turulmad&#305;</span><small>&#214;nce bir s&#252;tun ekleyin; &#246;rne&#287;in &#220;lke, &#220;lke kodu veya Vergi dairesi.</small></div>}
- <div className="spreadsheet-footer"><span><i className="save-dot"/> Bu kategoriye ba&#287;l&#305; kaydediliyor</span><span>&#199;ift t&#305;klay&#305;n · Enter ile kaydedin</span></div></section>{error&&<div className="manager-error" role="alert">{error}</div>}</div>
-}
+function CategoryManager(props:{token:string;category:Category;back:()=>void}) { return <CategoryEditor {...props} />; }
 function NewApi({ token, done }: { token: string; done: () => void }) {
   const [error, setError] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
