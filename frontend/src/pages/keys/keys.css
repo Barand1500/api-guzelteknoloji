@@ -31,8 +31,8 @@
 .keys-tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .keys-tags span { padding: 5px 8px; border-radius: 7px; background: #eef5ff; color: #2268b9; font-size: 11px; font-weight: 650; }
 .keys-tags em { color: #98a4b3; font-style: normal; }
-.keys-value { display: flex; align-items: center; gap: 5px; }
-.keys-value code { flex: 1; min-width: 0; color: #174e93; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-all; }
+.keys-value { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; }
+.keys-value code { min-width: 0; color: #174e93; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-all; }
 .keys-value button { flex: none; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: #edf4fc; color: #2673ce; cursor: pointer; }
 .keys-value button:hover { background: #dcecff; }
 .keys-number { font-variant-numeric: tabular-nums; font-weight: 700; }

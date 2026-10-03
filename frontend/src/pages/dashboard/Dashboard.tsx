@@ -229,6 +229,7 @@ export default function Dashboard({
         </div>
         {categories.length ? (
           <div className={`dash-category-grid ${mode === "list" ? "list" : ""}`} ref={cardsRef}>
+            {mode === "list" && <div className="dash-list-head" aria-hidden><span>Durum</span><span>Kategori</span><span>API adresi</span><span>İşlem</span></div>}
             {categories.map((category) => (
               <article className="dash-category-card" key={category.id}>
                 <div className="dash-card-top">
@@ -311,7 +312,7 @@ export default function Dashboard({
                     onClick={() => void copy(category)}
                     title="API adresini kopyala"
                   >
-                    <code>/api/categories/{category.slug}</code>
+                    <code>{new URL(`/api/categories/${category.slug}`, window.location.origin).toString()}</code>
                     {copied === category.id ? (
                       <Check size={16} />
                     ) : (
