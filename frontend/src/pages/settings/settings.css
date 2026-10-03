@@ -1,14 +1,15 @@
-.settings-page { max-width: 1180px; color: #182033; }
+.settings-page { width: 100%; color: #182033; }
 .settings-heading { margin: 4px 0 24px; }
 .settings-kicker { color: #8b3deb; font-size: 11px; font-weight: 800; letter-spacing: .11em; }
 .settings-heading h1 { margin: 7px 0 4px; font-size: 30px; letter-spacing: -.035em; }
 .settings-heading p,.settings-content-heading p,.settings-card-heading p,.settings-method-row p,.settings-image-actions p { margin: 0; color: #718096; font-size: 13px; line-height: 1.55; }
-.settings-layout { display: grid; grid-template-columns: 235px minmax(0,1fr); gap: 20px; align-items: start; }
+.settings-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: 17px; }
 .settings-tabs,.settings-content { border: 1px solid #e1e7ef; border-radius: 17px; background: #fff; box-shadow: 0 8px 25px #25375308; }
-.settings-tabs { display: grid; gap: 5px; padding: 14px; }
-.settings-tabs-caption { padding: 8px 10px 11px; color: #9aa5b4; font-size: 10px; font-weight: 800; letter-spacing: .12em; }
-.settings-tabs button { width: 100%; display: flex; align-items: center; gap: 11px; padding: 12px; border: 0; border-radius: 11px; background: transparent; color: #566277; text-align: left; cursor: pointer; }
-.settings-tabs button.active { background: #f1e7ff; color: #7424c7; }
+.settings-tabs { display: flex; align-items: center; gap: 6px; padding: 6px; overflow-x: auto; }
+.settings-tabs-caption { display: none; }
+.settings-tabs button { flex: none; display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 0; border-radius: 11px; background: transparent; color: #566277; text-align: left; cursor: pointer; }
+.settings-tabs button.active { background: #1f6fd8; color: #fff; box-shadow: 0 2px 5px #1239712b; }
+.settings-tabs button.active small { color: #e5f1ff; }
 .settings-tabs button span { display: grid; gap: 2px; font-size: 13px; font-weight: 750; }.settings-tabs button small { color: #8a95a6; font-size: 10px; font-weight: 500; }
 .settings-content { overflow: hidden; }
 .settings-content-heading { display: flex; align-items: center; gap: 13px; padding: 22px 26px; border-bottom: 1px solid #e9eef4; }

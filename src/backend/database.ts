@@ -49,6 +49,7 @@ export async function ensurePhysicalTable(category: CategoryRow) {
   identifier(name);
   await pool.query(`CREATE TABLE IF NOT EXISTS ${identifier(name)} (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    gtk_sort_order INT NOT NULL DEFAULT 0,
     active TINYINT(1) NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -187,7 +188,7 @@ async function migrateReadableTables() {
     const seenColumns = new Set<string>();
     for (const column of columns.filter(item => item.category_id === category.id)) {
       const field = columnName(column.id, column.name);
-      if (["id", "legacy_id", "active", "created_at", "updated_at"].includes(field) || seenColumns.has(field)) {
+      if (["id", "legacy_id", "gtk_sort_order", "active", "created_at", "updated_at"].includes(field) || seenColumns.has(field)) {
         throw new Error(`SQL sütun adı çakışıyor: ${category.name}.${field}`);
       }
       seenColumns.add(field);
@@ -201,6 +202,7 @@ async function migrateReadableTables() {
     if (existingTable.length && !await hasColumn(target, "legacy_id")) throw new Error(`Tablo adı zaten kullanılıyor: ${target}`);
     await pool.query(`CREATE TABLE IF NOT EXISTS ${identifier(target)} (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, legacy_id CHAR(36) NULL UNIQUE,
+      gtk_sort_order INT NOT NULL DEFAULT 0,
       active TINYINT(1) NOT NULL DEFAULT 1,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -259,6 +261,20 @@ async function removeMigrationColumns() {
   }
 }
 
+async function ensureRowOrder() {
+  const [categories] = await pool.query<CategoryRow[]>("SELECT * FROM api_categories WHERE table_name IS NOT NULL");
+  const [done] = await pool.query<any[]>("SELECT 1 FROM api_migration_state WHERE name='row_order_v3'");
+  for (const category of categories) {
+    const table = category.table_name!;
+    if (!await hasColumn(table, "gtk_sort_order")) await pool.query(`ALTER TABLE ${identifier(table)} ADD COLUMN gtk_sort_order INT NOT NULL DEFAULT 0 AFTER id`);
+    if (!done.length) {
+      const [rows] = await pool.query<any[]>(`SELECT id FROM ${identifier(table)} ORDER BY id`);
+      for (const [index, row] of rows.entries()) await pool.query(`UPDATE ${identifier(table)} SET gtk_sort_order=? WHERE id=?`, [index, row.id]);
+    }
+  }
+  if (!done.length) await pool.query("INSERT INTO api_migration_state(name) VALUES ('row_order_v3')");
+}
+
 let initialization: Promise<void> | null = null;
 export async function initDatabase() {
   if (!initialization) initialization = (async () => {
@@ -266,6 +282,7 @@ export async function initDatabase() {
     const [done] = await pool.query<any[]>("SELECT 1 FROM api_migration_state WHERE name='readable_tables_v2'");
     if (!done.length) { await migrateLegacyData(); await migrateReadableTables(); }
     await removeMigrationColumns();
+    await ensureRowOrder();
   })().catch(error => { initialization = null; throw error; });
   await initialization;
 }

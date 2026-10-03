@@ -5,6 +5,8 @@ import {
   Check,
   Copy,
   Ellipsis,
+  LayoutGrid,
+  List,
   Plus,
   Search,
   ShieldAlert,
@@ -38,6 +40,7 @@ export default function Dashboard({
 }) {
   const [state, setState] = useState<State | null>(null);
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<"grid" | "list">(() => localStorage.getItem("gtk_category_view") === "list" ? "list" : "grid");
   const [copied, setCopied] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -204,7 +207,6 @@ export default function Dashboard({
         <div className="dash-toolbar">
           <div>
             <h2>Kategoriler</h2>
-            <span>{state.categories.length} kategori</span>
           </div>
           <div className="dash-toolbar-actions">
             <label className="dash-search">
@@ -216,13 +218,17 @@ export default function Dashboard({
                 aria-label="Kategori ara"
               />
             </label>
+            <div className="dash-view-switch" role="group" aria-label="Kategori görünümü">
+              <button className={mode === "grid" ? "active" : ""} onClick={() => { setMode("grid"); localStorage.setItem("gtk_category_view", "grid"); }} title="Kart görünümü" aria-label="Kart görünümü"><LayoutGrid size={17} /></button>
+              <button className={mode === "list" ? "active" : ""} onClick={() => { setMode("list"); localStorage.setItem("gtk_category_view", "list"); }} title="Liste görünümü" aria-label="Liste görünümü"><List size={18} /></button>
+            </div>
             <button className="dash-add" onClick={create}>
               <Plus size={17} /> Yeni kategori
             </button>
           </div>
         </div>
         {categories.length ? (
-          <div className="dash-category-grid" ref={cardsRef}>
+          <div className={`dash-category-grid ${mode === "list" ? "list" : ""}`} ref={cardsRef}>
             {categories.map((category) => (
               <article className="dash-category-card" key={category.id}>
                 <div className="dash-card-top">
@@ -298,7 +304,6 @@ export default function Dashboard({
                 </div>
                 <div className="dash-card-body">
                   <h3 title={category.name}>{category.name}</h3>
-                  <p>API veri kaynağı</p>
                 </div>
                 <div className="dash-card-endpoint">
                   <span>API ADRESİ</span>

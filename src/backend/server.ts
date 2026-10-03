@@ -8,6 +8,7 @@ import { adminRoutes } from "./adminRoutes.js";
 import { InputError } from "./categories.js";
 import { initDatabase } from "./database.js";
 import { publicRoutes } from "./publicRoutes.js";
+import { searchRoutes } from "./search.js";
 
 const app = express();
 const port = Number(process.env.PORT || 4010);
@@ -17,7 +18,7 @@ const publicDir = path.resolve(here, "../../public");
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static(publicDir));
-app.use(authRoutes, adminRoutes, publicRoutes);
+app.use(authRoutes, adminRoutes, searchRoutes, publicRoutes);
 app.get(/^(?!\/api|\/admin|\/auth).*/, (_request, response) => response.sendFile(path.join(publicDir, "index.html")));
 
 const errors: ErrorRequestHandler = (error, _request, response, _next) => {

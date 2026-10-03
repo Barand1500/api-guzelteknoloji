@@ -7,6 +7,7 @@ import Keys from "./pages/keys/Keys";
 import Settings from "./pages/settings/Settings";
 import Layout from "./shared/Layout";
 import type { Category, View } from "./shared/types";
+import { request } from "./shared/api";
 
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem("gtk_token")),
@@ -30,6 +31,14 @@ export default function App() {
     <Layout
       view={view}
       setView={go}
+      token={token}
+      openCategory={async id => {
+        try {
+          const categories = await request<Category[]>("/admin/categories", token);
+          const category = categories.find(item => item.id === id);
+          if (category) { setSelected(category); setView("manage"); }
+        } catch { /* The destination remains unchanged when loading fails. */ }
+      }}
       logout={() => {
         localStorage.removeItem("gtk_token");
         setToken(null);
