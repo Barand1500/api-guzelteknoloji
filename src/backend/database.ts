@@ -35,6 +35,22 @@ async function addMetadataColumn(table: string, column: string, definition: stri
   if (!await hasColumn(table, column)) await pool.query(`ALTER TABLE ${identifier(table)} ADD COLUMN ${identifier(column)} ${definition}`);
 }
 
+async function apiKeyIdDefinition() {
+  const [columns] = await pool.query<any[]>(
+    "SELECT COLUMN_TYPE columnType,CHARACTER_SET_NAME characterSet,COLLATION_NAME collation FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='api_keys' AND COLUMN_NAME='id' LIMIT 1",
+  );
+  const column = columns[0];
+  if (!column || !/^(?:char|varchar)\(\d+\)$/i.test(column.columnType)) {
+    throw new Error("api_keys.id sütununun türü api_key_folders tablosu için desteklenmiyor");
+  }
+  const characterSet = String(column.characterSet || "");
+  const collation = String(column.collation || "");
+  if (!/^[a-z0-9_]+$/i.test(characterSet) || !/^[a-z0-9_]+$/i.test(collation)) {
+    throw new Error("api_keys.id karakter kümesi veya collation bilgisi geçersiz");
+  }
+  return `${column.columnType} CHARACTER SET ${characterSet} COLLATE ${collation}`;
+}
+
 export function sqlType(fieldType: string): string {
   switch (fieldType) {
     case "number": return "DECIMAL(20,6) NULL";
@@ -115,8 +131,9 @@ async function createMetadata() {
     CONSTRAINT fk_key_category_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
     CONSTRAINT fk_key_category_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  const apiKeyId = await apiKeyIdDefinition();
   await pool.query(`CREATE TABLE IF NOT EXISTS api_key_folders (
-    api_key_id CHAR(36) NOT NULL, folder_id INT NOT NULL,
+    api_key_id ${apiKeyId} NOT NULL, folder_id INT NOT NULL,
     PRIMARY KEY (api_key_id,folder_id),
     CONSTRAINT fk_key_folder_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
     CONSTRAINT fk_key_folder_folder FOREIGN KEY (folder_id) REFERENCES api_category_folders(id) ON DELETE CASCADE
