@@ -118,7 +118,7 @@ export default function App() {
           create={() => setView("new")}
         />
       ) : view === "new" ? (
-        <NewCategory token={token} done={() => go("dashboard")} />
+        <NewCategory token={token} done={() => go("dashboard")} manage={category => { setSelected(category); setView("manage"); }} />
       ) : view === "keys" ? (
         <Keys token={token} />
       ) : view === "settings" ? (

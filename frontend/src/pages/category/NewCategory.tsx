@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { Database, Folder, FolderInput, FolderPlus, Layers3, Plus, RefreshCw, Table2 } from "lucide-react";
+import { ArrowLeft, Database, Folder, FolderInput, FolderPlus, Layers3, Plus, RefreshCw, Table2 } from "lucide-react";
 import { request } from "../../shared/api";
 import type { Category, CategoryFolder } from "../../shared/types";
 import "./new-category.css";
@@ -51,7 +51,7 @@ export default function NewCategory({ token, done, manage }: Props) {
       });
       setFolderName("");
       setSelectedFolderId(folder.id);
-      setSuccess(`“${folder.name}” klasörü oluşturuldu. Artık içine alt klasör veya kategori ekleyebilirsiniz.`);
+      setSuccess(`“${folder.name}” klasörü oluşturuldu.`);
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -71,7 +71,7 @@ export default function NewCategory({ token, done, manage }: Props) {
         method: "POST",
         body: JSON.stringify({ name: categoryName.trim(), slug: slug.trim(), folderId: selectedFolderId }),
       });
-      setSuccess(`“${categoryName.trim()}” kategorisi oluşturuldu ve fiziksel API tablosu hazırlandı.`);
+      setSuccess(`“${categoryName.trim()}” kategorisi oluşturuldu.`);
       setCategoryName("");
       setSlug("");
       await load();
@@ -92,7 +92,7 @@ export default function NewCategory({ token, done, manage }: Props) {
         body: JSON.stringify({ folderId }),
       });
       setMovingCategoryId(null);
-      setSuccess(`“${category.name}” kategorisinin klasör konumu güncellendi; tablo verileri korundu.`);
+      setSuccess(`“${category.name}” kategorisi taşındı.`);
       await load();
     } catch (reason) {
       setError((reason as Error).message);
@@ -117,20 +117,20 @@ export default function NewCategory({ token, done, manage }: Props) {
     const containedCategories = categories.filter(category => (category.folderId ?? null) === parentId);
     return <>
       {parentId === null && <button type="button" className={`new-category-tree-root ${selectedFolderId === null ? "selected" : ""}`} onClick={() => setSelectedFolderId(null)}>
-        <Database size={16} /><span><strong>Ana klasör</strong><small>Klasör dışında duran kategoriler</small></span><b>{containedCategories.length}</b>
+        <Database size={18} /><span><strong>Ana klasör</strong><small>Kök dizin</small></span><b>{containedCategories.length}</b>
       </button>}
       {nestedFolders.map(folder => {
         const count = categories.filter(category => category.folderId === folder.id).length;
         return <div key={folder.id} className="new-category-tree-node" style={{ "--tree-depth": depth } as TreeStyle}>
           <button type="button" className={`new-category-tree-folder ${selectedFolderId === folder.id ? "selected" : ""}`} onClick={() => setSelectedFolderId(folder.id)}>
-            <Folder size={16} /><span><strong>{folder.name}</strong><small>{count} kategori · alt klasör {folders.filter(item => item.parentId === folder.id).length}</small></span><b>{count}</b>
+            <Folder size={18} /><span><strong>{folder.name}</strong><small>{folderPath(folder.id)}</small></span><b>{count}</b>
           </button>
           {folderTree(folder.id, depth + 1)}
         </div>;
       })}
       {containedCategories.map(category => <div key={`category-${category.id}`} className="new-category-tree-category-wrap" style={{ "--tree-depth": depth } as TreeStyle}>
         <button type="button" className="new-category-tree-category" onClick={() => manage(category)}>
-          <Table2 size={15} /><span><strong>{category.name}</strong><small>/v1/{category.slug}</small></span><span className={`new-category-status ${category.active ? "online" : ""}`}>{category.active ? "Etkin" : "Kapalı"}</span>
+          <Table2 size={17} /><span><strong>{category.name}</strong><small>/v1/{category.slug}</small></span><span className={`new-category-status ${category.active ? "online" : ""}`}>{category.active ? "Etkin" : "Kapalı"}</span>
         </button>
         <button type="button" className="new-category-tree-move" title="Kategoriyi başka klasöre taşı" aria-label={`${category.name} kategorisini başka klasöre taşı`} onClick={() => setMovingCategoryId(current => current === category.id ? null : category.id)}><FolderInput size={14} /></button>
         {movingCategoryId === category.id && <select className="new-category-move-select" aria-label={`${category.name} için hedef klasör`} value={category.folderId ?? ""} disabled={saving} onChange={event => void moveCategory(category, event.target.value ? Number(event.target.value) : null)}>
@@ -142,31 +142,31 @@ export default function NewCategory({ token, done, manage }: Props) {
 
   return <div className="new-category-page">
     <header className="new-category-heading">
-      <div><span className="new-category-kicker"><Layers3 size={14} /> API YAPISI</span><h1>Yeni kategori</h1><p>API içeriklerini klasörlerde düzenleyin. Her kategori, verisini tutan bağımsız bir endpoint ve tablo oluşturur.</p></div>
-      <button type="button" className="new-category-back" onClick={done}>Anasayfaya dön</button>
+      <div><span className="new-category-kicker"><Layers3 size={16} /> API YAPISI</span><h1>Yeni kategori</h1><p>Klasörlerini düzenle, yeni API kategorileri oluştur.</p></div>
+      <button type="button" className="new-category-back" onClick={done}><ArrowLeft size={17} /> Genel Yönetim</button>
     </header>
     {(error || success) && <div className={`new-category-notice ${error ? "error" : "success"}`} role={error ? "alert" : "status"}>{error || success}{error && <button type="button" onClick={() => void load()}><RefreshCw size={14} /> Yeniden dene</button>}</div>}
     <div className="new-category-layout">
       <section className="new-category-panel new-category-tree-panel">
-        <div className="new-category-panel-heading"><span className="new-category-icon"><Layers3 size={18} /></span><div><h2>Klasör yapısı</h2><p>Klasör seçip içine alt klasör veya kategori oluşturun.</p></div><button type="button" onClick={() => void load()} aria-label="Klasör yapısını yenile"><RefreshCw size={15} /></button></div>
+        <div className="new-category-panel-heading"><span className="new-category-icon"><Layers3 size={21} /></span><div><h2>Klasörler</h2><p>Kategori veya klasör seç</p></div><button type="button" onClick={() => void load()} aria-label="Klasör yapısını yenile"><RefreshCw size={18} /></button></div>
         <div className="new-category-tree">
           {loading ? <div className="new-category-tree-empty">Klasör yapısı yükleniyor…</div> : folderTree(null)}
-          {!loading && !folders.length && !categories.length && <div className="new-category-tree-empty"><FolderPlus size={22} /><strong>Henüz içerik yok</strong><span>Sağdan ilk klasörünüzü veya API kategorinizi oluşturun.</span></div>}
+          {!loading && !folders.length && !categories.length && <div className="new-category-tree-empty"><FolderPlus size={26} /><strong>Henüz içerik yok</strong><span>İlk klasörünü veya kategorini oluştur.</span></div>}
         </div>
       </section>
 
       <div className="new-category-create-column">
         <section className="new-category-panel">
-          <div className="new-category-panel-heading"><span className="new-category-icon folder"><FolderPlus size={18} /></span><div><h2>İç içe klasör oluştur</h2><p>Seçili konumun altında yeni bir klasör açın.</p></div></div>
+          <div className="new-category-panel-heading"><span className="new-category-icon folder"><FolderPlus size={21} /></span><div><h2>Klasör oluştur</h2><p>Seçili konuma ekle</p></div></div>
           <div className="new-category-current-path"><Folder size={15} />{selectedFolderId === null ? "Ana klasör" : folderPath(selectedFolderId)}</div>
           <form onSubmit={event => void createFolder(event)}>
             <label>Klasör adı<input value={folderName} onChange={event => setFolderName(event.target.value)} maxLength={120} placeholder="Örn. Ücretsiz API'ler" required /></label>
-            <button type="submit" disabled={saving || loading}><FolderPlus size={16} />{saving ? "Oluşturuluyor…" : "Alt klasör ekle"}</button>
+            <button type="submit" disabled={saving || loading}><Plus size={18} />{saving ? "Oluşturuluyor…" : "Klasör ekle"}</button>
           </form>
         </section>
 
         <section className="new-category-panel">
-          <div className="new-category-panel-heading"><span className="new-category-icon table"><Table2 size={18} /></span><div><h2>API kategorisi oluştur</h2><p>Kategoriye ait endpoint ve düzenlenebilir veri tablosu hazırlanır.</p></div></div>
+          <div className="new-category-panel-heading"><span className="new-category-icon table"><Table2 size={21} /></span><div><h2>API kategorisi oluştur</h2><p>Yeni bir veri kaynağı ekle</p></div></div>
           <div className="new-category-current-path"><Folder size={15} />{selectedFolderId === null ? "Ana klasör" : folderPath(selectedFolderId)}</div>
           <form onSubmit={event => void createCategory(event)}>
             <label>Kategori adı<input value={categoryName} onChange={event => {
@@ -175,7 +175,7 @@ export default function NewCategory({ token, done, manage }: Props) {
               setSlug(nextName.toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ö/g, "o").replace(/ç/g, "c").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
             }} maxLength={120} placeholder="Örn. Vergi Daireleri" required /></label>
             <label>API endpoint adresi<input value={slug} onChange={event => setSlug(event.target.value)} maxLength={100} placeholder="vergi-daireleri" required /></label>
-            <button type="submit" disabled={saving || loading}><Plus size={16} />{saving ? "Oluşturuluyor…" : "API kategorisi oluştur"}</button>
+            <button type="submit" disabled={saving || loading}><Plus size={18} />{saving ? "Oluşturuluyor…" : "Kategori oluştur"}</button>
           </form>
         </section>
       </div>
