@@ -114,6 +114,17 @@ async function createMetadata() {
     quick_login_enabled TINYINT(1) NOT NULL DEFAULT 1, image_data LONGTEXT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_smtp_settings (
+    id INT PRIMARY KEY, host VARCHAR(255) NOT NULL, port SMALLINT UNSIGNED NOT NULL,
+    secure TINYINT(1) NOT NULL DEFAULT 0, user VARCHAR(255) NOT NULL, from_address VARCHAR(255) NOT NULL,
+    password_ciphertext TEXT NULL, password_iv VARCHAR(32) NULL, password_tag VARCHAR(32) NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_panel_preferences (
+    id INT PRIMARY KEY, sidebar_order JSON NOT NULL, quick_access JSON NOT NULL,
+    search_width SMALLINT UNSIGNED NOT NULL DEFAULT 300,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query("CREATE TABLE IF NOT EXISTS api_settings (id INT PRIMARY KEY, value VARCHAR(16) NOT NULL)");
   await pool.query("CREATE TABLE IF NOT EXISTS api_migration_state (name VARCHAR(80) PRIMARY KEY, completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)");
   await addMetadataColumn("api_categories", "table_name", "VARCHAR(64) NULL UNIQUE");

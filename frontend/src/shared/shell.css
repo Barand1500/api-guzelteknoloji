@@ -228,6 +228,8 @@
   background: #e9f2ff;
   color: #1f6fd8;
 }
+.workspace-sidebar-bottom { justify-content:space-evenly; }
+.workspace-sidebar-bottom > button { margin-left:0; }
 .workspace-compact .workspace-sidebar-bottom { justify-content: center; }
 .workspace-compact .workspace-sidebar-bottom > button { margin-left: 0; }
 .workspace-sidebar-tools {
@@ -299,6 +301,7 @@
   text-align: left;
   font-size: 13px;
 }
+.workspace-preferences-error { margin:0 0 12px; padding:9px 12px; border:1px solid #f3c8cd; border-radius:8px; background:#fff3f4; color:#bc3c4e; font-size:11px; }
 .workspace-search:hover {
   border-color: #9fc2f0;
   background: #fff;

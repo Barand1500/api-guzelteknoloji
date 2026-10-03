@@ -50,6 +50,20 @@ Alan adı reverse proxy ile bu servisin portuna yönlendirilmelidir. İlk giriş
 
 The "Hizli Giris" option emails a one-time 6-digit code to `ADMIN_EMAIL`. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and optional `SMTP_FROM` in the server `.env`. Codes expire after 5 minutes, allow up to 5 attempts, and can be requested once per minute.
 
+SMTP values can also be updated from **Ayarlar → E-posta/SMTP Ayarları**. Panel overrides are stored in MySQL; the SMTP password is encrypted with AES-256-GCM and is never returned to the browser. Set `SMTP_SETTINGS_ENCRYPTION_KEY` in the server `.env` before saving a new password. Generate a key with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Keep this key private and persistent: changing or losing it makes previously saved SMTP passwords unreadable. `SMTP_SECURE=false` is appropriate for STARTTLS on port 587; use `true` for direct TLS, commonly on port 465. The settings screen can send a test message to `ADMIN_EMAIL`.
+
+## Panel tools
+
+The administration panel includes combined request statistics/history, an authenticated API playground, schema/API-key management, persistent appearance preferences, and filtering/bulk actions in the category editor. Panel preferences and SMTP overrides are created automatically in `api_panel_preferences` and `api_smtp_settings`.
+
+The read-only database table inventory is available with `npm run db:audit`. It reports row counts and possible legacy category tables; it never drops tables. Review `database-audit.txt` and inspect the report before approving any cleanup.
+
 ## Git ile deploy
 
 Sunucuda proje bir kez klonlandıktan sonra:

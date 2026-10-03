@@ -11,7 +11,11 @@ const pages: { id: View; title: string; icon: string }[] = [
   { id: "dashboard", title: "Genel Yönetim", icon: "home" },
   { id: "new", title: "Yeni Kategori", icon: "code" },
   { id: "keys", title: "API Anahtarları", icon: "briefcase" },
+  { id: "statistics", title: "İstatistikler", icon: "chart" },
+  { id: "playground", title: "API Deneme Alanı", icon: "play" },
+  { id: "schema-keys", title: "Şema ve Anahtarlar", icon: "database" },
   { id: "settings", title: "Ayarlar", icon: "gear" },
+  { id: "appearance", title: "Görünüm", icon: "sliders" },
 ];
 export function GlobalSearch({ token, onClose, onOpenPage, onOpenCategory }: { token: string; onClose: () => void; onOpenPage: (view: View) => void; onOpenCategory: (id: number) => void }) {
   const [query, setQuery] = useState("");

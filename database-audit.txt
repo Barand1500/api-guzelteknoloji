@@ -1,0 +1,69 @@
+API SERVISI — VERITABANI TABLO DENETIMI
+
+Durum: Kaynak kodu kullanımı incelendi. Bu çalışma alanında api-service/.env,
+DATABASE_URL ortam değişkeni veya yapılandırılmış bir DBCode bağlantısı yok.
+Bu nedenle canlı veritabanından tablo listesi, satır sayısı, veri eşleşmesi ve
+foreign key referansları okunamadı. Aşağıdaki sınıflandırma kaynak koduna
+dayalıdır; canlı veritabanında silme onayı anlamına gelmez.
+
+
+KULLANICININ ADINI VERDİĞİ TABLOLAR
+
+api_category_columns
+  Durum: AKTİF — kesinlikle silinmemeli.
+  Neden: Kategori sütunlarının adı, türü, sırası ve ilişki hedefi burada tutulur.
+  Kategori editörü, arama, public API ve şema ilişkileri bu tabloyu kullanır.
+  Kaynaklar: src/backend/categories.ts, src/backend/search.ts,
+  src/backend/adminRoutes.ts, src/backend/database.ts.
+
+api_category_rows
+  Durum: Eski JSON kayıt deposu / olası geri dönüş kaynağı.
+  Neden: `physical_categories_v1` migrasyonu işareti yoksa başlangıçta buradaki
+  kayıtlar kategori fiziksel tablolarına kopyalanır. Migrasyon tamamlandıktan
+  sonra normal CRUD akışının ana deposu değildir; ancak eski kayıtlar tabloda
+  kalmış olabilir. Satır sayısı ve yeni tabloyla birebir karşılaştırma
+  yapılmadan silinmemeli.
+  Kaynaklar: src/backend/database.ts içindeki migrateLegacyData().
+
+api_migration_state
+  Durum: AKTİF migrasyon kontrol tablosu — kesinlikle silinmemeli.
+  Neden: `physical_categories_v1`, `readable_tables_v2` ve `row_order_v3`
+  işaretleri migrasyonların tekrar çalışıp tablo/veri dönüşümü yapmasını önler.
+  Kaynak: src/backend/database.ts.
+
+gtk_4_ulkeler
+  Durum: Olası eski fiziksel kategori tablosu; canlı DB üzerinden doğrulanmadı.
+  Neden: Eski `gtk_<kategori-id>_<ad>` biçimindeki tablolar `readable_tables_v2`
+  sırasında `ulkeler` gibi okunabilir tablo adlarına taşınır. Eski tablo
+  otomatik silinmediği için yedek/kopya olabilir. Fakat `api_categories.table_name`
+  hâlâ bu tabloyu gösteriyorsa aktif tablodur ve silinmemelidir.
+  Silme adayı sayılmadan önce migrasyon işareti, aktif kategori metadata'sı,
+  foreign key kullanımı ve yeni/legacy satır içerikleri karşılaştırılmalıdır.
+  Kaynaklar: src/backend/database.ts içindeki ensureLegacyTable() ve
+  migrateReadableTables().
+
+
+DİĞER UYGULAMA TABLOLARI
+
+`api_categories`, `api_keys`, `api_key_categories`, `api_usage_logs`,
+`api_settings`, `api_login_settings` ve `api_records` halen uygulama/API
+işlevlerinde kullanılıyor. `api_smtp_settings` ve `api_panel_preferences`
+bu özelliklerle eklenen yapılandırma tablolarıdır. Bunlar da canlı uygulama
+tablolarıdır; yalnızca boş görünmeleri silme gerekçesi değildir.
+
+
+GERÇEK VERİTABANI ENVANTERİ NASIL ALINIR?
+
+API sunucusundaki api-service dizininde, DATABASE_URL tanımlı .env dosyası
+mevcutken şu komutu çalıştırın:
+
+  npm run db:audit
+
+Bu komut salt okunurdur: tablo adlarını ve satır sayılarını listeler, aktif
+kategori tablolarını ve migrasyon işaretlerini kontrol eder, olası legacy
+tabloları elle incelenmek üzere işaretler. Hiçbir tabloyu değiştirmez veya
+silmez. Komutun çıktısı alınmadan ve veriler yedeklenmeden DROP TABLE
+çalıştırılmamalıdır.
+
+Silme işlemi için ayrıca onay alınması gerektiğinden bu değişiklik kapsamında
+veritabanında hiçbir tablo silinmedi.
