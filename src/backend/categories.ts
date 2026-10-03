@@ -254,8 +254,21 @@ export async function saveSchema(categoryId: number, payload: { columns: any[]; 
 export async function publicData(category: CategoryRow) {
   const fields = await columnRows(category.id);
   const rows = await rowValues(category.table_name!, fields, true);
-  return rows.map(row => ({
-    id: Number(row.id),
-    ...Object.fromEntries(fields.map(field => [field.name, row.data[String(field.id)] || null])),
-  }));
+  // Integrations such as AnyPay read a standard "name" field. Preserve every
+  // user-defined column and add that alias when the table uses a custom label
+  // such as "Ülke Adı" or "Ülkeler".
+  const nameField = fields.find(field =>
+    field.field_type === "text" &&
+    /^(name|ad|adi|isim|ulke|ulkeadi|ulkeler|country|countryname)$/.test(
+      field.name.toLocaleLowerCase("tr-TR")
+        .replace(/ı/g, "i")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\s_-]/g, ""),
+    ),
+  ) || fields.find(field => field.field_type === "text");
+  return rows.map(row => {
+    const values = Object.fromEntries(fields.map(field => [field.name, row.data[String(field.id)] || null]));
+    const name = nameField ? row.data[String(nameField.id)] : "";
+    return { id: Number(row.id), ...values, ...(!Object.hasOwn(values, "name") && name ? { name } : {}) };
+  });
 }
