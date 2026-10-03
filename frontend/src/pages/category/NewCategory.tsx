@@ -1,16 +1,24 @@
-import { useCallback, useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { ArrowLeft, Database, Folder, FolderInput, FolderPlus, Layers3, Plus, RefreshCw, Table2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { ArrowLeft, ArrowRight, Check, Database, Folder, FolderInput, FolderPlus, Home, Plus, RefreshCw, Table2, X } from "lucide-react";
 import { request } from "../../shared/api";
 import type { Category, CategoryFolder } from "../../shared/types";
 import "./new-category.css";
 
 type Props = { token: string; done: () => void; manage: (category: Category) => void };
-type TreeStyle = CSSProperties & { "--tree-depth": number };
+type Dialog = "choose" | "folder" | "category" | null;
+
+function slugFromName(name: string) {
+  return name.toLocaleLowerCase("tr-TR")
+    .replace(/ı/g, "i").replace(/ğ/g, "g").replace(/ü/g, "u")
+    .replace(/ş/g, "s").replace(/ö/g, "o").replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 export default function NewCategory({ token, done, manage }: Props) {
   const [folders, setFolders] = useState<CategoryFolder[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
+  const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const [movingCategoryId, setMovingCategoryId] = useState<number | null>(null);
   const [folderName, setFolderName] = useState("");
   const [categoryName, setCategoryName] = useState("");
@@ -18,11 +26,10 @@ export default function NewCategory({ token, done, manage }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
       const [folderList, categoryList] = await Promise.all([
         request<CategoryFolder[]>("/admin/category-folders", token),
@@ -30,155 +37,133 @@ export default function NewCategory({ token, done, manage }: Props) {
       ]);
       setFolders(folderList);
       setCategories(categoryList);
+      setCurrentFolderId(current => current === null || folderList.some(folder => folder.id === current) ? current : null);
+      setError("");
     } catch (reason) {
-      setError((reason as Error).message || "Klasörler ve kategoriler yüklenemedi.");
+      setError((reason as Error).message || "İçerik yüklenemedi.");
     } finally {
       setLoading(false);
     }
   }, [token]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!dialog) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) setDialog(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dialog, saving]);
+
+  const currentFolder = currentFolderId === null ? null : folders.find(folder => folder.id === currentFolderId) || null;
+  const path = useMemo(() => {
+    const result: CategoryFolder[] = [];
+    const visited = new Set<number>();
+    let folder = currentFolder;
+    while (folder && !visited.has(folder.id)) {
+      visited.add(folder.id);
+      result.unshift(folder);
+      folder = folder.parentId === null ? null : folders.find(item => item.id === folder!.parentId) || null;
+    }
+    return result;
+  }, [currentFolder, folders]);
+  const visibleFolders = folders.filter(folder => folder.parentId === currentFolderId);
+  const visibleCategories = categories.filter(category => (category.folderId ?? null) === currentFolderId);
+  const locationLabel = currentFolder?.name || "Ana klasör";
+
+  function openDialog(next: Dialog) {
+    setError("");
+    setNotice("");
+    setDialog(next);
+  }
+  function openNew() { openDialog(currentFolderId === null ? "folder" : "choose"); }
+  function folderPath(id: number | null) {
+    if (id === null) return "Ana klasör";
+    const names: string[] = [];
+    const visited = new Set<number>();
+    let folder = folders.find(item => item.id === id);
+    while (folder && !visited.has(folder.id)) {
+      visited.add(folder.id);
+      names.unshift(folder.name);
+      folder = folder.parentId === null ? undefined : folders.find(item => item.id === folder!.parentId);
+    }
+    return names.join(" / ");
+  }
 
   async function createFolder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!folderName.trim()) return;
-    setSaving(true);
-    setError("");
-    setSuccess("");
+    const name = folderName.trim();
+    if (!name || saving) return;
+    setSaving(true); setError("");
     try {
       const folder = await request<CategoryFolder>("/admin/category-folders", token, {
-        method: "POST",
-        body: JSON.stringify({ name: folderName.trim(), parentId: selectedFolderId }),
+        method: "POST", body: JSON.stringify({ name, parentId: currentFolderId }),
       });
       setFolderName("");
-      setSelectedFolderId(folder.id);
-      setSuccess(`“${folder.name}” klasörü oluşturuldu.`);
+      setDialog(null);
       await load();
-    } catch (reason) {
-      setError((reason as Error).message);
-    } finally {
-      setSaving(false);
-    }
+      setCurrentFolderId(folder.id);
+      setNotice(`“${folder.name}” klasörü oluşturuldu.`);
+    } catch (reason) { setError((reason as Error).message); }
+    finally { setSaving(false); }
   }
-
   async function createCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!categoryName.trim() || !slug.trim()) return;
-    setSaving(true);
-    setError("");
-    setSuccess("");
+    const name = categoryName.trim();
+    const endpoint = slug.trim();
+    if (!name || !endpoint || saving) return;
+    setSaving(true); setError("");
     try {
       await request<Category>("/admin/categories", token, {
-        method: "POST",
-        body: JSON.stringify({ name: categoryName.trim(), slug: slug.trim(), folderId: selectedFolderId }),
+        method: "POST", body: JSON.stringify({ name, slug: endpoint, folderId: currentFolderId }),
       });
-      setSuccess(`“${categoryName.trim()}” kategorisi oluşturuldu.`);
-      setCategoryName("");
-      setSlug("");
+      setCategoryName(""); setSlug(""); setDialog(null);
       await load();
-    } catch (reason) {
-      setError((reason as Error).message);
-    } finally {
-      setSaving(false);
-    }
+      setNotice(`“${name}” kategorisi oluşturuldu.`);
+    } catch (reason) { setError((reason as Error).message); }
+    finally { setSaving(false); }
   }
-
   async function moveCategory(category: Category, folderId: number | null) {
-    setSaving(true);
-    setError("");
-    setSuccess("");
+    setSaving(true); setError("");
     try {
-      await request(`/admin/categories/${category.id}`, token, {
-        method: "PATCH",
-        body: JSON.stringify({ folderId }),
-      });
+      await request(`/admin/categories/${category.id}`, token, { method: "PATCH", body: JSON.stringify({ folderId }) });
       setMovingCategoryId(null);
-      setSuccess(`“${category.name}” kategorisi taşındı.`);
       await load();
-    } catch (reason) {
-      setError((reason as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function folderPath(folderId: number | null): string {
-    const path: string[] = [];
-    let current = folderId === null ? undefined : folders.find(folder => folder.id === folderId);
-    while (current) {
-      path.unshift(current.name);
-      const parentId = current.parentId;
-      current = parentId === null ? undefined : folders.find(folder => folder.id === parentId);
-    }
-    return path.join(" / ");
-  }
-
-  function folderTree(parentId: number | null, depth = 0): ReactNode {
-    const nestedFolders = folders.filter(folder => folder.parentId === parentId);
-    const containedCategories = categories.filter(category => (category.folderId ?? null) === parentId);
-    return <>
-      {parentId === null && <button type="button" className={`new-category-tree-root ${selectedFolderId === null ? "selected" : ""}`} onClick={() => setSelectedFolderId(null)}>
-        <Database size={18} /><span><strong>Ana klasör</strong><small>Kök dizin</small></span><b>{containedCategories.length}</b>
-      </button>}
-      {nestedFolders.map(folder => {
-        const count = categories.filter(category => category.folderId === folder.id).length;
-        return <div key={folder.id} className="new-category-tree-node" style={{ "--tree-depth": depth } as TreeStyle}>
-          <button type="button" className={`new-category-tree-folder ${selectedFolderId === folder.id ? "selected" : ""}`} onClick={() => setSelectedFolderId(folder.id)}>
-            <Folder size={18} /><span><strong>{folder.name}</strong><small>{folderPath(folder.id)}</small></span><b>{count}</b>
-          </button>
-          {folderTree(folder.id, depth + 1)}
-        </div>;
-      })}
-      {containedCategories.map(category => <div key={`category-${category.id}`} className="new-category-tree-category-wrap" style={{ "--tree-depth": depth } as TreeStyle}>
-        <button type="button" className="new-category-tree-category" onClick={() => manage(category)}>
-          <Table2 size={17} /><span><strong>{category.name}</strong><small>/v1/{category.slug}</small></span><span className={`new-category-status ${category.active ? "online" : ""}`}>{category.active ? "Etkin" : "Kapalı"}</span>
-        </button>
-        <button type="button" className="new-category-tree-move" title="Kategoriyi başka klasöre taşı" aria-label={`${category.name} kategorisini başka klasöre taşı`} onClick={() => setMovingCategoryId(current => current === category.id ? null : category.id)}><FolderInput size={14} /></button>
-        {movingCategoryId === category.id && <select className="new-category-move-select" aria-label={`${category.name} için hedef klasör`} value={category.folderId ?? ""} disabled={saving} onChange={event => void moveCategory(category, event.target.value ? Number(event.target.value) : null)}>
-          <option value="">Ana klasör</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folderPath(folder.id)}</option>)}
-        </select>}
-      </div>)}
-    </>;
+      setNotice(`“${category.name}” taşındı.`);
+    } catch (reason) { setError((reason as Error).message); }
+    finally { setSaving(false); }
   }
 
   return <div className="new-category-page">
-    <header className="new-category-heading">
-      <div><span className="new-category-kicker"><Layers3 size={16} /> API YAPISI</span><h1>Yeni kategori</h1><p>Klasörlerini düzenle, yeni API kategorileri oluştur.</p></div>
-      <button type="button" className="new-category-back" onClick={done}><ArrowLeft size={17} /> Genel Yönetim</button>
-    </header>
-    {(error || success) && <div className={`new-category-notice ${error ? "error" : "success"}`} role={error ? "alert" : "status"}>{error || success}{error && <button type="button" onClick={() => void load()}><RefreshCw size={14} /> Yeniden dene</button>}</div>}
-    <div className="new-category-layout">
-      <section className="new-category-panel new-category-tree-panel">
-        <div className="new-category-panel-heading"><span className="new-category-icon"><Layers3 size={21} /></span><div><h2>Klasörler</h2><p>Kategori veya klasör seç</p></div><button type="button" onClick={() => void load()} aria-label="Klasör yapısını yenile"><RefreshCw size={18} /></button></div>
-        <div className="new-category-tree">
-          {loading ? <div className="new-category-tree-empty">Klasör yapısı yükleniyor…</div> : folderTree(null)}
-          {!loading && !folders.length && !categories.length && <div className="new-category-tree-empty"><FolderPlus size={26} /><strong>Henüz içerik yok</strong><span>İlk klasörünü veya kategorini oluştur.</span></div>}
-        </div>
-      </section>
-
-      <div className="new-category-create-column">
-        <section className="new-category-panel">
-          <div className="new-category-panel-heading"><span className="new-category-icon folder"><FolderPlus size={21} /></span><div><h2>Klasör oluştur</h2><p>Seçili konuma ekle</p></div></div>
-          <div className="new-category-current-path"><Folder size={15} />{selectedFolderId === null ? "Ana klasör" : folderPath(selectedFolderId)}</div>
-          <form onSubmit={event => void createFolder(event)}>
-            <label>Klasör adı<input value={folderName} onChange={event => setFolderName(event.target.value)} maxLength={120} placeholder="Örn. Ücretsiz API'ler" required /></label>
-            <button type="submit" disabled={saving || loading}><Plus size={18} />{saving ? "Oluşturuluyor…" : "Klasör ekle"}</button>
-          </form>
-        </section>
-
-        <section className="new-category-panel">
-          <div className="new-category-panel-heading"><span className="new-category-icon table"><Table2 size={21} /></span><div><h2>API kategorisi oluştur</h2><p>Yeni bir veri kaynağı ekle</p></div></div>
-          <div className="new-category-current-path"><Folder size={15} />{selectedFolderId === null ? "Ana klasör" : folderPath(selectedFolderId)}</div>
-          <form onSubmit={event => void createCategory(event)}>
-            <label>Kategori adı<input value={categoryName} onChange={event => {
-              const nextName = event.target.value;
-              setCategoryName(nextName);
-              setSlug(nextName.toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s").replace(/ö/g, "o").replace(/ç/g, "c").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""));
-            }} maxLength={120} placeholder="Örn. Vergi Daireleri" required /></label>
-            <label>API endpoint adresi<input value={slug} onChange={event => setSlug(event.target.value)} maxLength={100} placeholder="vergi-daireleri" required /></label>
-            <button type="submit" disabled={saving || loading}><Plus size={18} />{saving ? "Oluşturuluyor…" : "Kategori oluştur"}</button>
-          </form>
-        </section>
-      </div>
+    <div className="new-category-heading">
+      <div><span className="new-category-eyebrow">API YAPISI</span><h1>{locationLabel}</h1><p>{currentFolderId === null ? "Klasörlerini ve kategorilerini düzenle." : "Bu klasördeki içerikleri yönet."}</p></div>
+      <div className="new-category-heading-actions"><button type="button" className="new-category-home" onClick={done}><ArrowLeft size={17} /> Genel Yönetim</button><button type="button" className="new-category-primary" onClick={openNew}><Plus size={19} /> Yeni</button></div>
     </div>
+    <nav className="new-category-path" aria-label="Klasör yolu"><button type="button" onClick={() => setCurrentFolderId(null)}><Home size={16} /> Ana klasör</button>{path.map(folder => <span key={folder.id}><ArrowRight size={14} /><button type="button" onClick={() => setCurrentFolderId(folder.id)}>{folder.name}</button></span>)}</nav>
+    {(error || notice) && !dialog && <div className={`new-category-message ${error ? "error" : ""}`} role={error ? "alert" : "status"}>{error || <><Check size={17} />{notice}</>}{error && <button type="button" onClick={() => void load()}><RefreshCw size={16} /> Yeniden dene</button>}</div>}
+
+    <section className="new-category-section">
+      <div className="new-category-section-head"><h2>Klasörler <span>{visibleFolders.length}</span></h2><button type="button" onClick={() => void load()} aria-label="İçeriği yenile"><RefreshCw size={18} /></button></div>
+      {loading ? <div className="new-category-empty">Klasörler yükleniyor…</div> : visibleFolders.length ? <div className="new-category-folder-grid">{visibleFolders.map(folder => {
+        const folderCount = folders.filter(item => item.parentId === folder.id).length;
+        const categoryCount = categories.filter(item => item.folderId === folder.id).length;
+        return <button type="button" className="new-category-folder-card" key={folder.id} onClick={() => { setCurrentFolderId(folder.id); setMovingCategoryId(null); setNotice(""); }}>
+          <span className="new-category-folder-icon"><Folder size={24} /></span><span><strong>{folder.name}</strong><small>{folderCount} klasör · {categoryCount} kategori</small></span><ArrowRight size={18} />
+        </button>;
+      })}</div> : <div className="new-category-empty"><Folder size={25} /><span>Bu konumda klasör yok.</span></div>}
+    </section>
+
+    <section className="new-category-section">
+      <div className="new-category-section-head"><h2>Kategoriler <span>{visibleCategories.length}</span></h2>{currentFolderId === null && <button type="button" className="new-category-inline-add" onClick={() => openDialog("category")}><Plus size={17} /> Kategori ekle</button>}</div>
+      {loading ? <div className="new-category-empty">Kategoriler yükleniyor…</div> : visibleCategories.length ? <div className="new-category-table-wrap"><table className="new-category-table"><thead><tr><th>Kategori</th><th>API adresi</th><th>Durum</th><th>İşlem</th></tr></thead><tbody>{visibleCategories.map(category => <tr key={category.id}>
+        <td><span className="new-category-category-name"><Table2 size={18} /><strong>{category.name}</strong></span></td>
+        <td><code>/v1/{category.slug}</code></td>
+        <td><span className={`new-category-status ${category.active ? "online" : ""}`}>{category.active ? "Etkin" : "Kapalı"}</span></td>
+        <td><div className="new-category-row-actions"><button type="button" onClick={() => manage(category)}>Yönet <ArrowRight size={16} /></button><button type="button" className="new-category-move" title="Başka klasöre taşı" aria-label={`${category.name} kategorisini taşı`} onClick={() => setMovingCategoryId(current => current === category.id ? null : category.id)}><FolderInput size={17} /></button></div>{movingCategoryId === category.id && <select className="new-category-move-select" aria-label={`${category.name} için hedef klasör`} defaultValue={category.folderId ?? ""} disabled={saving} onChange={event => void moveCategory(category, event.target.value ? Number(event.target.value) : null)}><option value="">Ana klasör</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folderPath(folder.id)}</option>)}</select>}</td>
+      </tr>)}</tbody></table></div> : <div className="new-category-empty"><Database size={25} /><span>Bu konumda kategori yok.</span>{currentFolderId !== null && <button type="button" onClick={() => openDialog("category")}>Kategori oluştur</button>}</div>}
+    </section>
+
+    {dialog && <div className="new-category-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !saving) setDialog(null); }}><div className="new-category-dialog" role="dialog" aria-modal="true" aria-labelledby="new-category-dialog-title">
+      <div className="new-category-dialog-head"><div><span>{locationLabel}</span><h2 id="new-category-dialog-title">{dialog === "choose" ? "Ne eklemek istersin?" : dialog === "folder" ? "Yeni klasör" : "Yeni kategori"}</h2></div><button type="button" onClick={() => setDialog(null)} disabled={saving} aria-label="Kapat"><X size={20} /></button></div>
+      {dialog === "choose" ? <div className="new-category-choices"><button type="button" onClick={() => openDialog("folder")}><span className="folder"><FolderPlus size={23} /></span><strong>Alt klasör</strong><small>Bu klasörün içinde yeni bir alan aç.</small><ArrowRight size={18} /></button><button type="button" onClick={() => openDialog("category")}><span className="category"><Table2 size={23} /></span><strong>API kategorisi</strong><small>Bu klasöre veri kaynağı ekle.</small><ArrowRight size={18} /></button></div> : dialog === "folder" ? <form onSubmit={event => void createFolder(event)}><label>Klasör adı<input autoFocus value={folderName} onChange={event => setFolderName(event.target.value)} maxLength={120} placeholder="Örn. Müşteriler" required /></label>{error && <p className="new-category-dialog-error" role="alert">{error}</p>}<div className="new-category-dialog-actions"><button type="button" onClick={() => setDialog(null)}>Vazgeç</button><button className="new-category-primary" type="submit" disabled={saving}>{saving ? "Oluşturuluyor…" : "Klasör oluştur"}</button></div></form> : <form onSubmit={event => void createCategory(event)}><label>Kategori adı<input autoFocus value={categoryName} onChange={event => { setCategoryName(event.target.value); setSlug(slugFromName(event.target.value)); }} maxLength={120} placeholder="Örn. Ülkeler" required /></label><label>API adresi<span className="new-category-slug-field"><span>/v1/</span><input value={slug} onChange={event => setSlug(slugFromName(event.target.value))} maxLength={100} placeholder="ulkeler" required /></span></label>{error && <p className="new-category-dialog-error" role="alert">{error}</p>}<div className="new-category-dialog-actions"><button type="button" onClick={() => setDialog(null)}>Vazgeç</button><button className="new-category-primary" type="submit" disabled={saving}>{saving ? "Oluşturuluyor…" : "Kategori oluştur"}</button></div></form>}
+    </div></div>}
   </div>;
 }
