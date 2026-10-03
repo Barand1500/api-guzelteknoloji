@@ -1,4 +1,5 @@
 /** Ortak menü ikonları */
+import { BookOpen, Boxes, Building2, CalendarDays, Cloud, Database, FileText, Folder, Globe2, KeyRound, Layers3, Link2, MapPin, Package, Server, ShieldCheck, ShoppingBag, Tag, UserRound, Users, Zap } from "lucide-react";
 
 type Props = {
   name: string;
@@ -6,6 +7,15 @@ type Props = {
 };
 
 export function NavIcon({ name, size = 18 }: Props) {
+  const extraIcons = {
+    book: BookOpen, boxes: Boxes, building: Building2, calendar: CalendarDays,
+    cloud: Cloud, data: Database, document: FileText, folder: Folder,
+    globe: Globe2, key: KeyRound, layers: Layers3, link: Link2,
+    map: MapPin, package: Package, server: Server, shield: ShieldCheck,
+    shop: ShoppingBag, tag: Tag, user: UserRound, users: Users, zap: Zap,
+  } as const;
+  const ExtraIcon = extraIcons[name as keyof typeof extraIcons];
+  if (ExtraIcon) return <ExtraIcon size={size} strokeWidth={1.8} aria-hidden />;
   const common = {
     width: size,
     height: size,

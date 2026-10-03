@@ -2,7 +2,12 @@ import { addForeignKey, columnName, ensurePhysicalTable, identifier, initDatabas
 
 export type FieldType = "text" | "number" | "boolean" | "date" | "relation";
 const fieldTypes = new Set<FieldType>(["text", "number", "boolean", "date", "relation"]);
-const categoryIcons = new Set(["code", "home", "briefcase", "pulse", "pay", "chart", "sliders", "gear"]);
+const categoryIcons = new Set([
+  "code", "home", "briefcase", "pulse", "pay", "chart", "sliders", "gear",
+  "book", "boxes", "building", "calendar", "cloud", "data", "document",
+  "folder", "globe", "key", "layers", "link", "map", "package",
+  "server", "shield", "shop", "tag", "user", "users", "zap",
+]);
 export class InputError extends Error { constructor(message: string, public status = 400) { super(message); } }
 
 const visibleCategory = (row: CategoryRow, folderPath = "") => ({
