@@ -2,11 +2,12 @@ import { addForeignKey, columnName, ensurePhysicalTable, identifier, initDatabas
 
 export type FieldType = "text" | "number" | "boolean" | "date" | "relation";
 const fieldTypes = new Set<FieldType>(["text", "number", "boolean", "date", "relation"]);
+const categoryIcons = new Set(["code", "home", "briefcase", "pulse", "pay", "chart", "sliders", "gear"]);
 export class InputError extends Error { constructor(message: string, public status = 400) { super(message); } }
 
 const visibleCategory = (row: CategoryRow) => ({
   id: row.id, name: row.name, slug: row.slug, tableName: row.table_name || tableName(row.id, row.name),
-  active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at,
+  icon: categoryIcons.has(row.icon) ? row.icon : "code", active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at,
 });
 const visibleColumn = (row: ColumnRow) => ({
   id: row.id, name: row.name, sqlName: row.sql_name || columnName(row.id, row.name),
@@ -55,18 +56,20 @@ export async function createCategory(name: string, slugInput: string) {
   return visibleCategory(await categoryById(id));
 }
 
-export async function updateCategory(id: number, input: { name?: unknown; active?: unknown }) {
+export async function updateCategory(id: number, input: { name?: unknown; active?: unknown; icon?: unknown }) {
   const category = await categoryById(id);
   const name = input.name === undefined ? category.name : String(input.name).trim();
   const active = input.active === undefined ? Boolean(category.active) : input.active;
+  const icon = input.icon === undefined ? category.icon || "code" : String(input.icon);
   if (!name || name.length > 120 || typeof active !== "boolean") throw new InputError("Kategori bilgileri geçersiz");
+  if (!categoryIcons.has(icon)) throw new InputError("Kategori ikonu geçersiz");
   const nextTable = tableName(id, name);
   if (nextTable !== category.table_name) {
     const [used] = await pool.query<any[]>("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1", [nextTable]);
     if (used.length) throw new InputError("Bu kategori adı bir MySQL tablosunda zaten kullanılıyor", 409);
     await pool.query(`RENAME TABLE ${identifier(category.table_name!)} TO ${identifier(nextTable)}`);
   }
-  try { await pool.query("UPDATE api_categories SET name=?,active=?,table_name=? WHERE id=?", [name, active ? 1 : 0, nextTable, id]); }
+  try { await pool.query("UPDATE api_categories SET name=?,active=?,table_name=?,icon=? WHERE id=?", [name, active ? 1 : 0, nextTable, icon, id]); }
   catch (error) {
     if (nextTable !== category.table_name) await pool.query(`RENAME TABLE ${identifier(nextTable)} TO ${identifier(category.table_name!)}`);
     throw error;

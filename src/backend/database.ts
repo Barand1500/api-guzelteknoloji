@@ -5,7 +5,7 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL tanımlı değil");
 export const pool = mysql.createPool(databaseUrl);
 
-export interface CategoryRow extends RowDataPacket { id: number; name: string; slug: string; table_name: string | null; active: number; created_at: Date; updated_at: Date }
+export interface CategoryRow extends RowDataPacket { id: number; name: string; slug: string; table_name: string | null; icon: string; active: number; created_at: Date; updated_at: Date }
 export interface ColumnRow extends RowDataPacket { id: number; category_id: number; name: string; sql_name: string | null; field_type: string; reference_category_id: number | null; position: number }
 
 export function identifier(value: string): string {
@@ -116,6 +116,7 @@ async function createMetadata() {
   await pool.query("CREATE TABLE IF NOT EXISTS api_settings (id INT PRIMARY KEY, value VARCHAR(16) NOT NULL)");
   await pool.query("CREATE TABLE IF NOT EXISTS api_migration_state (name VARCHAR(80) PRIMARY KEY, completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)");
   await addMetadataColumn("api_categories", "table_name", "VARCHAR(64) NULL UNIQUE");
+  await addMetadataColumn("api_categories", "icon", "VARCHAR(24) NOT NULL DEFAULT 'code'");
   await addMetadataColumn("api_categories", "updated_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
   await addMetadataColumn("api_category_columns", "sql_name", "VARCHAR(64) NULL");
   await addMetadataColumn("api_category_columns", "reference_category_id", "INT NULL");
