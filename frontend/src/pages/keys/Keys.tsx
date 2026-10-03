@@ -1,139 +1,120 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import gsap from "gsap";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Check, ChevronLeft, ChevronRight, Copy, FileKey2, KeyRound, Plus, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import { request } from "../../shared/api";
-import { Field } from "../../shared/ui";
 import type { ApiKey, Category } from "../../shared/types";
+import "./keys.css";
 
 export default function Keys({ token }: { token: string }) {
-  const [rows, setRows] = useState<ApiKey[]>([]),
-    [categories, setCategories] = useState<Category[]>([]),
-    [creating, setCreating] = useState(false);
-  const load = useCallback(
-    () =>
-      Promise.all([
+  const [rows, setRows] = useState<ApiKey[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ApiKey | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
+  const [pageSizeText, setPageSizeText] = useState("10");
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [keys, available] = await Promise.all([
         request<ApiKey[]>("/admin/api-keys", token),
         request<Category[]>("/admin/categories", token),
-      ]).then(([k, c]) => {
-        setRows(k);
-        setCategories(c);
-      }),
-    [token],
-  );
+      ]);
+      setRows(keys);
+      setCategories(available);
+      setError("");
+    } catch (reason) { setError((reason as Error).message); }
+    finally { setLoading(false); }
+  }, [token]);
+  useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    void load();
-  }, [load]);
-  async function create(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget),
-      categoryIds = f.getAll("categoryIds").map(Number);
-    await request("/admin/api-keys", token, {
-      method: "POST",
-      body: JSON.stringify({ projectName: f.get("projectName"), categoryIds }),
-    });
-    setCreating(false);
-    load();
+    if (modalRef.current) gsap.fromTo(modalRef.current, { opacity: 0, y: 16, scale: .97 }, { opacity: 1, y: 0, scale: 1, duration: .25, ease: "power2.out" });
+  }, [creating, deleteTarget]);
+
+  const filtered = useMemo(() => {
+    const search = query.trim().toLocaleLowerCase("tr-TR");
+    return rows.filter(row =>
+      (status === "all" || row.active === (status === "active")) &&
+      (!search || [row.projectName, row.apiKey, ...row.categoryNames].some(value => value.toLocaleLowerCase("tr-TR").includes(search)))
+    );
+  }, [rows, query, status]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const shown = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+  useEffect(() => setPage(1), [query, status, pageSize]);
+  function applyPageSize(raw: string) {
+    const value = Math.min(99, Math.max(1, Number(raw) || 10));
+    setPageSize(value);
+    setPageSizeText(String(value));
   }
-  return (
-    <section className="panel">
-      <div className="panel-head">
-        <div>
-          <div className="eyebrow">Proje erişimleri</div>
-          <h2>API anahtarları</h2>
-        </div>
-        <button className="btn" onClick={() => setCreating((v) => !v)}>
-          ＋ Yeni anahtar
-        </button>
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const projectName = String(form.get("projectName") || "").trim();
+    const categoryIds = form.getAll("categoryIds").map(Number);
+    if (!projectName || !categoryIds.length) { setError("Proje adı ve en az bir kategori seçin."); return; }
+    setBusy(true); setError("");
+    try {
+      await request("/admin/api-keys", token, { method: "POST", body: JSON.stringify({ projectName, categoryIds }) });
+      setCreating(false); setPage(1); await load();
+    } catch (reason) { setError((reason as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function toggle(row: ApiKey) {
+    setBusy(true); setError("");
+    try {
+      await request(`/admin/api-keys/${row.id}`, token, { method: "PATCH", body: JSON.stringify({ active: !row.active }) });
+      setRows(current => current.map(item => item.id === row.id ? { ...item, active: !item.active } : item));
+    } catch (reason) { setError((reason as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function remove() {
+    if (!deleteTarget) return;
+    setBusy(true); setError("");
+    try {
+      await request(`/admin/api-keys/${deleteTarget.id}`, token, { method: "DELETE" });
+      setRows(current => current.filter(item => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (reason) { setError((reason as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function copy(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(value);
+      window.setTimeout(() => setCopied(current => current === value ? null : current), 1800);
+    } catch { setError("API anahtarı kopyalanamadı."); }
+  }
+
+  return <div className="keys-page">
+    <div className="keys-heading">
+      <div><span className="keys-kicker"><KeyRound size={14} /> ERİŞİM YÖNETİMİ</span><h1>API Anahtarları</h1><p>Projelerin hangi kategorilere erişebileceğini buradan yönetin.</p></div>
+      <button className="keys-primary" onClick={() => { setError(""); setCreating(true); }}><Plus size={17} /> Yeni anahtar</button>
+    </div>
+    <section className="keys-panel">
+      <div className="keys-toolbar">
+        <label className="keys-page-size"><input inputMode="numeric" value={pageSizeText} onChange={event => setPageSizeText(event.target.value.replace(/\D/g, "").slice(0, 2))} onBlur={() => applyPageSize(pageSizeText)} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); }} aria-label="Sayfa başına kayıt" /> veri göster</label>
+        <div className="keys-tools"><label className="keys-search"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Proje, API Key veya kategori ara..." aria-label="Anahtarlarda ara" /></label><select value={status} onChange={event => setStatus(event.target.value as typeof status)} aria-label="Duruma göre filtrele"><option value="all">Tüm durumlar</option><option value="active">Açık</option><option value="inactive">Kapalı</option></select></div>
       </div>
-      {creating && (
-        <form className="key-create" onSubmit={create}>
-          <Field
-            label="Proje / site adı"
-            name="projectName"
-            placeholder="Örn. Anypay Tahsilat"
-          />
-          <div>
-            <label className="field-title">Kullanabileceği API’ler</label>
-            <div className="check-grid">
-              {categories.map((c) => (
-                <label key={c.id}>
-                  <input type="checkbox" name="categoryIds" value={c.id} />
-                  {c.name}
-                </label>
-              ))}
-            </div>
-          </div>
-          <button className="btn">Anahtar oluştur</button>
-        </form>
-      )}
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Proje</th>
-              <th>İzin verilen API’ler</th>
-              <th>API Key</th>
-              <th>Site</th>
-              <th>İstek</th>
-              <th>Durum</th>
-              <th>İşlem</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((x) => (
-              <tr key={x.id}>
-                <td>
-                  <b>{x.projectName}</b>
-                </td>
-                <td>
-                  <div className="tag-list">
-                    {x.categoryNames.map((n) => (
-                      <span key={n}>{n}</span>
-                    ))}
-                  </div>
-                </td>
-                <td className="key">
-                  <span>{x.apiKey}</span>
-                  <button
-                    onClick={() => navigator.clipboard.writeText(x.apiKey)}
-                  >
-                    Kopyala
-                  </button>
-                </td>
-                <td>{x.siteCount}</td>
-                <td>{x.usageCount}</td>
-                <td>
-                  <button
-                    className={"switch compact " + (x.active ? "on" : "")}
-                    onClick={async () => {
-                      await request(`/admin/api-keys/${x.id}`, token, {
-                        method: "PATCH",
-                        body: JSON.stringify({ active: !x.active }),
-                      });
-                      load();
-                    }}
-                  >
-                    {x.active ? "Açık" : "Kapalı"}
-                  </button>
-                </td>
-                <td>
-                  <button
-                    className="text-danger"
-                    onClick={async () => {
-                      if (confirm("Anahtar silinsin mi?")) {
-                        await request(`/admin/api-keys/${x.id}`, token, {
-                          method: "DELETE",
-                        });
-                        load();
-                      }
-                    }}
-                  >
-                    Sil
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <div className="keys-table-wrap"><table className="keys-table"><thead><tr><th>Proje</th><th>İzin verilen kategoriler</th><th>API Key</th><th>Site</th><th>İstek</th><th>Durum</th><th aria-label="İşlem" /></tr></thead><tbody>{shown.map(row => <tr key={row.id}>
+        <td><span className="keys-project"><span className="keys-project-icon"><FileKey2 size={18} /></span><strong>{row.projectName}</strong></span></td>
+        <td><div className="keys-tags">{row.categoryNames.length ? row.categoryNames.map(name => <span key={name}>{name}</span>) : <em>Kategori seçilmemiş</em>}</div></td>
+        <td className="keys-value-cell"><div className="keys-value"><code>{row.apiKey}</code><button onClick={() => void copy(row.apiKey)} title="API Key kopyala" aria-label="API Key kopyala">{copied === row.apiKey ? <Check size={16} /> : <Copy size={16} />}</button></div></td>
+        <td className="keys-number">{row.siteCount}</td><td className="keys-number">{row.usageCount}</td>
+        <td><button className={`keys-status ${row.active ? "active" : "inactive"}`} disabled={busy} onClick={() => void toggle(row)} title="Durumu değiştir"><span />{row.active ? "Açık" : "Kapalı"}</button></td>
+        <td><button className="keys-delete" onClick={() => { setError(""); setDeleteTarget(row); }} title="Anahtarı sil" aria-label={`${row.projectName} anahtarını sil`}><Trash2 size={17} /></button></td>
+      </tr>)}</tbody></table>{!loading && !shown.length && <div className="keys-empty"><ShieldCheck size={28} /><strong>{query || status !== "all" ? "Eşleşen anahtar yok" : "Henüz API anahtarı yok"}</strong><p>{query || status !== "all" ? "Arama veya filtreyi değiştirebilirsiniz." : "İlk anahtarınızı oluşturarak bir projeye erişim verin."}</p></div>}{loading && <div className="keys-empty">Anahtarlar yükleniyor...</div>}</div>
+      <div className="keys-pagination"><span>{filtered.length ? (safePage - 1) * pageSize + 1 : 0}–{Math.min(safePage * pageSize, filtered.length)} arasında veri gösteriliyor. Toplam: {filtered.length}</span><div><button onClick={() => setPage(1)} disabled={safePage <= 1}>İlk</button><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={safePage <= 1}><ChevronLeft size={15} /> Geri</button><strong>{safePage}</strong><button onClick={() => setPage(value => Math.min(totalPages, value + 1))} disabled={safePage >= totalPages}>İleri <ChevronRight size={15} /></button><button onClick={() => setPage(totalPages)} disabled={safePage >= totalPages}>Son</button></div></div>
     </section>
-  );
+    {error && !creating && !deleteTarget && <p className="keys-error" role="alert">{error}</p>}
+    {creating && <div className="keys-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setCreating(false); }}><div ref={modalRef} className="keys-modal" role="dialog" aria-modal="true" aria-labelledby="keys-create-title"><button className="keys-modal-close" onClick={() => setCreating(false)} aria-label="Kapat"><X size={18} /></button><span className="keys-modal-icon"><KeyRound size={21} /></span><h2 id="keys-create-title">Yeni API anahtarı</h2><p>Projeye bir ad verin ve erişebileceği kategorileri seçin.</p><form onSubmit={event => void create(event)}><label className="keys-field">Proje / site adı<input name="projectName" placeholder="Örn. Anypay Tahsilat" required autoFocus /></label><div className="keys-field">İzin verilen kategoriler<div className="keys-category-options">{categories.map(category => <label key={category.id}><input type="checkbox" name="categoryIds" value={category.id} />{category.name}</label>)}{!categories.length && <small>Önce bir kategori oluşturun.</small>}</div></div>{error && <span className="keys-error" role="alert">{error}</span>}<div className="keys-modal-actions"><button type="button" onClick={() => setCreating(false)}>Vazgeç</button><button className="keys-primary" disabled={busy || !categories.length} type="submit">{busy ? "Oluşturuluyor..." : "Anahtar oluştur"}</button></div></form></div></div>}
+    {deleteTarget && <div className="keys-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setDeleteTarget(null); }}><div ref={modalRef} className="keys-modal keys-delete-modal" role="dialog" aria-modal="true" aria-labelledby="keys-delete-title"><button className="keys-modal-close" onClick={() => setDeleteTarget(null)} aria-label="Kapat"><X size={18} /></button><span className="keys-modal-icon danger"><Trash2 size={21} /></span><h2 id="keys-delete-title">API anahtarı silinsin mi?</h2><p><strong>{deleteTarget.projectName}</strong> projesinin erişimi hemen sona erecek.</p>{error && <span className="keys-error" role="alert">{error}</span>}<div className="keys-modal-actions"><button onClick={() => setDeleteTarget(null)}>Vazgeç</button><button className="keys-danger" disabled={busy} onClick={() => void remove()}>{busy ? "Siliniyor..." : "Anahtarı sil"}</button></div></div></div>}
+  </div>;
 }
