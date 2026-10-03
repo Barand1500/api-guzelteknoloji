@@ -9,7 +9,7 @@ const sidebarPages: { id: PanelPage; label: string; icon: string }[] = [
   { id: "dashboard", label: "Genel Yönetim", icon: "home" },
   { id: "statistics", label: "İstatistikler", icon: "chart" },
   { id: "playground", label: "API Deneme Alanı", icon: "play" },
-  { id: "schema-keys", label: "Şema ve Anahtarlar", icon: "database" },
+  { id: "schema-keys", label: "Şema", icon: "database" },
   { id: "keys", label: "API Anahtarları", icon: "briefcase" },
 ];
 const quickPages: { id: PanelPage; label: string; icon: string }[] = [

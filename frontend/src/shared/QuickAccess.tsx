@@ -18,7 +18,7 @@ const labelByView: Record<PanelPage, string> = {
   keys: "API Anahtarları",
   statistics: "İstatistikler",
   playground: "API Deneme Alanı",
-  "schema-keys": "Şema ve Anahtarlar",
+  "schema-keys": "Şema",
   settings: "Ayarlar",
   appearance: "Görünüm",
 };

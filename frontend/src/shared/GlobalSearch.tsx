@@ -13,7 +13,7 @@ const pages: { id: View; title: string; icon: string }[] = [
   { id: "keys", title: "API Anahtarları", icon: "briefcase" },
   { id: "statistics", title: "İstatistikler", icon: "chart" },
   { id: "playground", title: "API Deneme Alanı", icon: "play" },
-  { id: "schema-keys", title: "Şema ve Anahtarlar", icon: "database" },
+  { id: "schema-keys", title: "Şema", icon: "database" },
   { id: "settings", title: "Ayarlar", icon: "gear" },
   { id: "appearance", title: "Görünüm", icon: "sliders" },
 ];

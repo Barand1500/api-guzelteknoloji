@@ -7,7 +7,7 @@ import Keys from "./pages/keys/Keys";
 import Settings from "./pages/settings/Settings";
 import Statistics from "./pages/statistics/Statistics";
 import ApiPlayground from "./pages/playground/ApiPlayground";
-import SchemaKeys from "./pages/schema-keys/SchemaKeys";
+import Schema from "./pages/schema/Schema";
 import Appearance from "./pages/appearance/Appearance";
 import Layout from "./shared/Layout";
 import type { Category, PanelPage, PanelPreferences, View } from "./shared/types";
@@ -128,7 +128,7 @@ export default function App() {
       ) : view === "playground" ? (
         <ApiPlayground token={token} />
       ) : view === "schema-keys" ? (
-        <SchemaKeys token={token} />
+        <Schema token={token} />
       ) : view === "appearance" ? (
         <Appearance preferences={preferences} onSave={savePreferences} />
       ) : (

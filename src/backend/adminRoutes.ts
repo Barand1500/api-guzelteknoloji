@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { requireAuth } from "./auth.js";
 import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders, createCategory, createCategoryFolder, deleteCategory, deleteColumn, getSchema, InputError, publicData, saveSchema, updateCategory } from "./categories.js";
 import { initDatabase, pool, withTransaction } from "./database.js";
+import { databaseSchema } from "./schemaExplorer.js";
 
 export const adminRoutes = Router();
 adminRoutes.use("/admin", requireAuth);
@@ -78,29 +79,11 @@ adminRoutes.put("/admin/panel-preferences", async (request, response) => {
 });
 
 adminRoutes.get("/admin/categories", async (_request, response) => response.json({ success: true, data: await categories() }));
+adminRoutes.get("/admin/database-schema", async (_request, response) => response.json({ success: true, data: await databaseSchema() }));
 adminRoutes.get("/admin/category-folders", async (_request, response) => response.json({ success: true, data: await categoryFolders() }));
 adminRoutes.post("/admin/category-folders", async (request, response) => {
   const folder = await createCategoryFolder(request.body?.name, request.body?.parentId);
   response.status(201).json({ success: true, data: folder });
-});
-adminRoutes.get("/admin/schema-overview", async (_request, response) => {
-  await initDatabase();
-  const categoryList = await categories();
-  const [columns] = await pool.query<any[]>(`SELECT c.id categoryId,c.name categoryName,c.table_name tableName,
-    col.id columnId,col.name columnName,col.sql_name sqlName,col.field_type fieldType,
-    col.reference_category_id referenceCategoryId,target.name referenceCategoryName
-    FROM api_categories c LEFT JOIN api_category_columns col ON col.category_id=c.id
-    LEFT JOIN api_categories target ON target.id=col.reference_category_id
-    ORDER BY c.name,col.position,col.id`);
-  const byCategory = new Map(categoryList.map(category => [category.id, { ...category, columns: [] as any[] }]));
-  for (const column of columns) if (column.columnId !== null) {
-    byCategory.get(Number(column.categoryId))?.columns.push({
-      id: Number(column.columnId), name: column.columnName, sqlName: column.sqlName,
-      fieldType: column.fieldType, referenceCategoryId: column.referenceCategoryId ? Number(column.referenceCategoryId) : null,
-      referenceCategoryName: column.referenceCategoryName,
-    });
-  }
-  response.json({ success: true, data: [...byCategory.values()] });
 });
 adminRoutes.post("/admin/categories", async (request, response) => {
   const data = await createCategory(String(request.body?.name || ""), String(request.body?.slug || ""), request.body?.folderId);

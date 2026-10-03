@@ -28,7 +28,28 @@ export type UsageSummary = {
 };
 export type UsageLogPage = { rows: { id: number; createdAt: string; originHost: string | null; projectName: string; categoryName: string | null }[]; page: number; pageSize: number; total: number };
 export type SmtpSettings = { host: string; port: number; secure: boolean; user: string; from: string; passwordConfigured: boolean; encryptionKeyConfigured: boolean };
-export type SchemaOverviewCategory = Category & { columns: { id: number; name: string; sqlName: string; fieldType: Column["fieldType"]; referenceCategoryId: number | null; referenceCategoryName: string | null }[] };
+export type DatabaseSchema = {
+  databaseName: string;
+  tables: {
+    name: string;
+    kind: string;
+    engine: string | null;
+    estimatedRows: number | null;
+    dataBytes: number | null;
+    indexBytes: number | null;
+    category: { id: number; name: string } | null;
+    columns: {
+      name: string;
+      sqlType: string;
+      nullable: boolean;
+      defaultValue: string | null;
+      extra: string;
+      key: string;
+      position: number;
+      reference: { table: string; column: string; constraint: string } | null;
+    }[];
+  }[];
+};
 export type LoginSettings = {
   quickLoginEnabled: boolean;
   imageUrl: string;
