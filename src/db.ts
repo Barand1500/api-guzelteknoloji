@@ -16,6 +16,7 @@ export async function initDb() {
   await pool.query(`CREATE TABLE IF NOT EXISTS api_key_categories (api_key_id CHAR(36) NOT NULL, category_id INT NOT NULL, PRIMARY KEY (api_key_id,category_id), CONSTRAINT fk_key_category_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE, CONSTRAINT fk_key_category_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_usage_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY, api_key_id CHAR(36) NOT NULL, category_id INT NULL, origin_host VARCHAR(255) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_usage_key (api_key_id), INDEX idx_usage_category (category_id), CONSTRAINT fk_usage_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE, CONSTRAINT fk_usage_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE SET NULL)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_media (id CHAR(36) PRIMARY KEY, name VARCHAR(180) NOT NULL, url TEXT NOT NULL, mime_type VARCHAR(100) NOT NULL DEFAULT 'image', active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_login_settings (id INT PRIMARY KEY, theme VARCHAR(12) NOT NULL DEFAULT 'light', quick_login_enabled TINYINT(1) NOT NULL DEFAULT 1, image_data LONGTEXT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)`);
 }
 
 export async function listCategories(): Promise<Category[]> {

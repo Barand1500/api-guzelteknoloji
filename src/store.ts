@@ -3,8 +3,37 @@ import { initDb, listCategories, listRecords, pool, type Category, type RecordIt
 export type { RecordItem } from './db.js';
 
 export type Store = { enabled: boolean; categories: Category[]; records: RecordItem[] };
+export type LoginSettings = { theme: 'light' | 'dark'; quickLoginEnabled: boolean; imageUrl: string };
 let ready: Promise<void> | null = null;
 async function ensure() { if (!ready) ready = initDb(); await ready; }
+
+const DEFAULT_LOGIN_SETTINGS: LoginSettings = {
+  theme: 'light',
+  quickLoginEnabled: true,
+  imageUrl: '/login-character.jpg',
+};
+
+export async function readLoginSettings(): Promise<LoginSettings> {
+  await ensure();
+  const [rows] = await pool.query<any[]>(`SELECT theme,quick_login_enabled,image_data FROM api_login_settings WHERE id=1`);
+  const row = rows[0];
+  if (!row) return DEFAULT_LOGIN_SETTINGS;
+  return {
+    theme: row.theme === 'dark' ? 'dark' : 'light',
+    quickLoginEnabled: Boolean(row.quick_login_enabled),
+    imageUrl: row.image_data || '/login-character.jpg',
+  };
+}
+
+export async function writeLoginSettings(input: LoginSettings): Promise<LoginSettings> {
+  await ensure();
+  const imageData = input.imageUrl.startsWith('data:image/') ? input.imageUrl : null;
+  await pool.query(
+    `INSERT INTO api_login_settings (id,theme,quick_login_enabled,image_data) VALUES (1,?,?,?) ON DUPLICATE KEY UPDATE theme=VALUES(theme),quick_login_enabled=VALUES(quick_login_enabled),image_data=VALUES(image_data)`,
+    [input.theme, input.quickLoginEnabled ? 1 : 0, imageData],
+  );
+  return readLoginSettings();
+}
 
 export async function readStore(): Promise<Store> {
   await ensure();
