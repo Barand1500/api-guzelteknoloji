@@ -1,4 +1,4 @@
-export type View = "dashboard" | "new" | "keys" | "media" | "manage" | "settings";
+export type View = "dashboard" | "new" | "keys" | "manage" | "settings";
 export type Category = { id: number; name: string; slug: string; tableName?: string; active: boolean };
 export type State = { enabled: boolean; categories: Category[] };
 export type Column = { id: number; name: string; sqlName?: string; fieldType: "text" | "number" | "boolean" | "date" | "relation"; referenceCategoryId?: number | null };
@@ -14,14 +14,11 @@ export type ApiKey = {
   categoryNames: string[];
   categoryIds: number[];
 };
-export type Media = { id: string; name: string; url: string; mimeType: string };
 export type LoginSettings = {
-  theme: "light" | "dark";
   quickLoginEnabled: boolean;
   imageUrl: string;
 };
 export const DEFAULT_LOGIN_SETTINGS: LoginSettings = {
-  theme: "light",
   quickLoginEnabled: true,
   imageUrl: "/login-character.jpg",
 };

@@ -23,29 +23,6 @@
   align-items: center;
   gap: 10px;
 }
-.theme-toggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 13px;
-  border: 1px solid var(--admin-border);
-  border-radius: 10px;
-  background: var(--admin-panel);
-  color: var(--admin-text);
-  font-weight: 700;
-  cursor: pointer;
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease;
-}
-.theme-toggle:hover {
-  transform: translateY(-1px);
-  border-color: #438fe0;
-}
-.theme-toggle span {
-  color: #70b6ff;
-  font-size: 17px;
-}
 .dashboard-page,
 .manager-page {
   display: grid;

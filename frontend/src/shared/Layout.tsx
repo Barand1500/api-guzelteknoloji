@@ -1,25 +1,24 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity, ChevronRight, CircleHelp, Database, FileKey2, FolderOpen, Keyboard, LayoutDashboard, LogOut, Moon, Plus, Search, Settings2, Sun } from "lucide-react";
+import { Activity, ChevronRight, CircleHelp, Database, FileKey2, Keyboard, LayoutDashboard, LogOut, Plus, Search, Settings2 } from "lucide-react";
 import type { View } from "./types";
 
 type Props = {
-  view: View; setView: (view: View) => void; theme: "light" | "dark";
-  toggleTheme: () => void; logout: () => void; sidebarCollapsed: boolean;
+  view: View; setView: (view: View) => void;
+  logout: () => void; sidebarCollapsed: boolean;
   toggleSidebar: () => void; children: ReactNode;
 };
 
 const pages: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "dashboard", label: "Genel Yönetim", icon: LayoutDashboard },
   { id: "keys", label: "API Anahtarları", icon: FileKey2 },
-  { id: "media", label: "Medya", icon: FolderOpen },
   { id: "settings", label: "Ayarlar", icon: Settings2 },
 ];
 const titles: Record<View, string> = {
   dashboard: "Genel Yönetim", new: "Yeni Kategori", keys: "API Anahtarları",
-  media: "Medya", manage: "Tablo Yönetimi", settings: "Ayarlar",
+  manage: "Tablo Yönetimi", settings: "Ayarlar",
 };
 
-export default function Layout({ view, setView, theme, toggleTheme, logout, sidebarCollapsed, toggleSidebar, children }: Props) {
+export default function Layout({ view, setView, logout, sidebarCollapsed, toggleSidebar, children }: Props) {
   const [headerPinned, setHeaderPinned] = useState(true);
   const [footerPinned, setFooterPinned] = useState(true);
   const [headerVisible, setHeaderVisible] = useState(true);
@@ -38,7 +37,7 @@ export default function Layout({ view, setView, theme, toggleTheme, logout, side
   useEffect(() => { if (searchOpen) searchInput.current?.focus(); }, [searchOpen]);
   const matches = pages.filter(page => page.label.toLocaleLowerCase("tr-TR").includes(search.toLocaleLowerCase("tr-TR")));
 
-  return <div className={`workspace admin-theme-${theme} ${sidebarCollapsed ? "workspace-compact" : ""} ${headerPinned ? "" : "workspace-header-auto"} ${footerPinned ? "" : "workspace-footer-auto"}`}>
+  return <div className={`workspace ${sidebarCollapsed ? "workspace-compact" : ""} ${headerPinned ? "" : "workspace-header-auto"} ${footerPinned ? "" : "workspace-footer-auto"}`}>
     <aside className="workspace-sidebar" onDoubleClick={toggleSidebar} title="Daraltmak veya genişletmek için çift tıklayın">
       <div className="workspace-brand"><span className="workspace-brand-mark"><Database size={24} strokeWidth={2.4} /></span><span className="workspace-brand-copy"><strong>Güzel Teknoloji</strong><small>API Yönetim Merkezi</small></span></div>
       <button className="workspace-primary" onClick={() => setView("new")} title="Yeni kategori"><Plus size={18} /><span>Yeni kategori</span></button>
@@ -55,7 +54,7 @@ export default function Layout({ view, setView, theme, toggleTheme, logout, side
       <header className={`workspace-header ${headerVisible || headerPinned ? "visible" : "hidden"}`} onMouseLeave={() => { if (!headerPinned) setHeaderVisible(false); }} onDoubleClick={() => { setHeaderPinned(value => !value); setHeaderVisible(true); }} title="Otomatik gizlemeyi açmak veya sabitlemek için çift tıklayın">
         <button className="workspace-search" onClick={() => setSearchOpen(true)}><Search size={17} /><span>Ara...</span><kbd>Ctrl+K</kbd></button>
         <div className="workspace-header-shortcuts"><button onClick={() => setView("dashboard")} title="Genel Yönetim"><LayoutDashboard size={17} /></button><button onClick={() => setView("new")} title="Yeni kategori"><Plus size={18} /></button><button onClick={() => setView("keys")} title="API Anahtarları"><FileKey2 size={17} /></button></div>
-        <div className="workspace-header-end"><button className="workspace-theme" onClick={toggleTheme} aria-label={theme === "light" ? "Koyu tema" : "Açık tema"}>{theme === "light" ? <Sun size={18} /> : <Moon size={18} />}</button><button className="workspace-account" onClick={logout} title="Çıkış yap"><span className="workspace-avatar">GT</span><span><strong>Güzel Teknoloji</strong><small>Yönetici</small></span><LogOut size={16} /></button></div>
+        <div className="workspace-header-end"><button className="workspace-account" onClick={logout} title="Çıkış yap"><span className="workspace-avatar">GT</span><span><strong>Güzel Teknoloji</strong><small>Yönetici</small></span><LogOut size={16} /></button></div>
       </header>
 
       <main className="workspace-content"><div className="workspace-breadcrumb"><button onClick={() => setView("dashboard")}>Anasayfa</button><ChevronRight size={13} /><strong>{titles[view]}</strong></div>{children}</main>

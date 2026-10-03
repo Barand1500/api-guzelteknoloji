@@ -77,7 +77,7 @@ export default function Login({ onLogin }: { onLogin: (v: string) => void }) {
   };
   const liquidBlob = { color: "#1455b7", size: 76, smoothness: 45 };
   return (
-    <main className={"login-page theme-" + settings.theme}>
+    <main className="login-page">
       <section className="login-shell">
         <div className="login-visual">
           <div className="visual-glow" />

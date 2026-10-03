@@ -12,8 +12,8 @@ const adminPassword = process.env.ADMIN_PASSWORD;
 if (!secret || !adminPassword) throw new Error("JWT_SECRET ve ADMIN_PASSWORD tanımlanmalı");
 const adminHash = bcrypt.hashSync(adminPassword, 10);
 
-type LoginSettings = { theme: "light" | "dark"; quickLoginEnabled: boolean; imageUrl: string };
-const defaultSettings: LoginSettings = { theme: "light", quickLoginEnabled: true, imageUrl: "/login-character.jpg" };
+type LoginSettings = { quickLoginEnabled: boolean; imageUrl: string };
+const defaultSettings: LoginSettings = { quickLoginEnabled: true, imageUrl: "/login-character.jpg" };
 type Challenge = { hash: Buffer; expiresAt: number; attempts: number; sentAt: number };
 const challenges = new Map<string, Challenge>();
 const codeHash = (value: string) => createHash("sha256").update(value).digest();
@@ -32,10 +32,9 @@ export function requireAuth(request: Request, response: Response, next: NextFunc
 
 export async function readLoginSettings(): Promise<LoginSettings> {
   await initDatabase();
-  const [rows] = await pool.query<any[]>("SELECT theme,quick_login_enabled,image_data FROM api_login_settings WHERE id=1");
+  const [rows] = await pool.query<any[]>("SELECT quick_login_enabled,image_data FROM api_login_settings WHERE id=1");
   if (!rows[0]) return defaultSettings;
   return {
-    theme: rows[0].theme === "dark" ? "dark" : "light",
     quickLoginEnabled: Boolean(rows[0].quick_login_enabled),
     imageUrl: rows[0].image_data || defaultSettings.imageUrl,
   };
@@ -44,15 +43,14 @@ export async function readLoginSettings(): Promise<LoginSettings> {
 export async function writeLoginSettings(input: Partial<LoginSettings>) {
   const old = await readLoginSettings();
   const next = { ...old, ...input };
-  if (next.theme !== "light" && next.theme !== "dark") throw new InputError("Geçerli bir tema seçin");
   if (typeof next.quickLoginEnabled !== "boolean") throw new InputError("Hızlı giriş ayarı geçersiz");
   if (typeof next.imageUrl !== "string" || next.imageUrl.length > 1_800_000 ||
       !(next.imageUrl === "/login-character.jpg" || /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/.test(next.imageUrl))) {
     throw new InputError("Görsel PNG, JPEG veya WebP olmalı ve 1.3 MB sınırını aşmamalı");
   }
-  await pool.query(`INSERT INTO api_login_settings(id,theme,quick_login_enabled,image_data)
-    VALUES(1,?,?,?) ON DUPLICATE KEY UPDATE theme=VALUES(theme),quick_login_enabled=VALUES(quick_login_enabled),image_data=VALUES(image_data)`,
-  [next.theme, next.quickLoginEnabled ? 1 : 0, next.imageUrl.startsWith("data:image/") ? next.imageUrl : null]);
+  await pool.query(`INSERT INTO api_login_settings(id,quick_login_enabled,image_data)
+    VALUES(1,?,?) ON DUPLICATE KEY UPDATE quick_login_enabled=VALUES(quick_login_enabled),image_data=VALUES(image_data)`,
+  [next.quickLoginEnabled ? 1 : 0, next.imageUrl.startsWith("data:image/") ? next.imageUrl : null]);
   return readLoginSettings();
 }
 

@@ -66,21 +66,6 @@ adminRoutes.patch("/admin/api-keys/:id", async (request, response) => {
 });
 adminRoutes.delete("/admin/api-keys/:id", async (request, response) => { await pool.query("DELETE FROM api_keys WHERE id=?", [request.params.id]); response.json({ success: true }); });
 
-adminRoutes.get("/admin/media", async (_request, response) => {
-  await initDatabase();
-  const [rows] = await pool.query<any[]>("SELECT id,name,url,mime_type mimeType,active FROM api_media ORDER BY created_at DESC");
-  response.json({ success: true, data: rows.map(row => ({ ...row, active: Boolean(row.active) })) });
-});
-adminRoutes.post("/admin/media", async (request, response) => {
-  await initDatabase();
-  const name = String(request.body?.name || "").trim(), url = String(request.body?.url || "").trim();
-  if (!name || !url) throw new InputError("Dosya adı ve URL gerekli");
-  const id = randomUUID();
-  await pool.query("INSERT INTO api_media(id,name,url,mime_type,active) VALUES(?,?,?,?,1)", [id, name, url, String(request.body?.mimeType || "image")]);
-  response.status(201).json({ success: true, data: { id } });
-});
-adminRoutes.delete("/admin/media/:id", async (request, response) => { await pool.query("DELETE FROM api_media WHERE id=?", [request.params.id]); response.json({ success: true }); });
-
 adminRoutes.get("/admin/records", async (_request, response) => {
   await initDatabase();
   const [rows] = await pool.query<any[]>("SELECT id,category_id categoryId,name,value,active,updated_at updatedAt FROM api_records ORDER BY updated_at DESC");

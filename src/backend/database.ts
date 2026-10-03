@@ -19,8 +19,8 @@ const ascii = (value: string) => value.toLocaleLowerCase("tr-TR")
   .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
   .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 
-export const tableName = (id: number, name: string) => `gtk_${id}_${ascii(name).slice(0, 45) || "kategori"}`;
-export const columnName = (id: number, name: string) => `field_${id}_${ascii(name).slice(0, 45) || "alan"}`;
+export const tableName = (_id: number, name: string) => ascii(name).slice(0, 64) || "kategori";
+export const columnName = (_id: number, name: string) => ascii(name).slice(0, 64) || "alan";
 
 async function hasColumn(table: string, column: string) {
   const [rows] = await pool.query<any[]>(
@@ -39,7 +39,7 @@ export function sqlType(fieldType: string): string {
     case "number": return "DECIMAL(20,6) NULL";
     case "boolean": return "TINYINT(1) NULL";
     case "date": return "DATE NULL";
-    case "relation": return "CHAR(36) NULL";
+    case "relation": return "BIGINT UNSIGNED NULL";
     default: return "LONGTEXT NULL";
   }
 }
@@ -48,19 +48,12 @@ export async function ensurePhysicalTable(category: CategoryRow) {
   const name = category.table_name || tableName(category.id, category.name);
   identifier(name);
   await pool.query(`CREATE TABLE IF NOT EXISTS ${identifier(name)} (
-    id CHAR(36) PRIMARY KEY,
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     active TINYINT(1) NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
   if (!category.table_name) await pool.query("UPDATE api_categories SET table_name=? WHERE id=?", [name, category.id]);
-  return name;
-}
-
-export async function ensurePhysicalColumn(table: string, column: ColumnRow) {
-  const name = column.sql_name || columnName(column.id, column.name);
-  if (!await hasColumn(table, name)) await pool.query(`ALTER TABLE ${identifier(table)} ADD COLUMN ${identifier(name)} ${sqlType(column.field_type)}`);
-  if (!column.sql_name) await pool.query("UPDATE api_category_columns SET sql_name=? WHERE id=?", [name, column.id]);
   return name;
 }
 
@@ -115,11 +108,6 @@ async function createMetadata() {
     CONSTRAINT fk_usage_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
     CONSTRAINT fk_usage_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE SET NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS api_media (
-    id CHAR(36) PRIMARY KEY, name VARCHAR(180) NOT NULL, url TEXT NOT NULL,
-    mime_type VARCHAR(100) NOT NULL DEFAULT 'image', active TINYINT(1) NOT NULL DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_login_settings (
     id INT PRIMARY KEY, theme VARCHAR(12) NOT NULL DEFAULT 'light',
     quick_login_enabled TINYINT(1) NOT NULL DEFAULT 1, image_data LONGTEXT NULL,
@@ -134,14 +122,34 @@ async function createMetadata() {
   await pool.query("UPDATE api_category_columns SET field_type='text' WHERE field_type NOT IN ('text','number','boolean','date','relation')");
 }
 
+// First bring installations that still store rows as JSON to the previous physical format.
+async function ensureLegacyTable(category: CategoryRow) {
+  const name = category.table_name || `gtk_${category.id}_${ascii(category.name).slice(0, 45) || "kategori"}`;
+  await pool.query(`CREATE TABLE IF NOT EXISTS ${identifier(name)} (
+    id CHAR(36) PRIMARY KEY, active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+  if (!category.table_name) await pool.query("UPDATE api_categories SET table_name=? WHERE id=?", [name, category.id]);
+  return name;
+}
+
+async function ensureLegacyColumn(table: string, column: ColumnRow) {
+  const name = column.sql_name || `field_${column.id}_${ascii(column.name).slice(0, 45) || "alan"}`;
+  const type = column.field_type === "relation" ? "CHAR(36) NULL" : sqlType(column.field_type);
+  if (!await hasColumn(table, name)) await pool.query(`ALTER TABLE ${identifier(table)} ADD COLUMN ${identifier(name)} ${type}`);
+  if (!column.sql_name) await pool.query("UPDATE api_category_columns SET sql_name=? WHERE id=?", [name, column.id]);
+  return name;
+}
+
 async function migrateLegacyData() {
   const [categories] = await pool.query<CategoryRow[]>("SELECT * FROM api_categories ORDER BY id");
   const tables = new Map<number, string>();
-  for (const category of categories) tables.set(category.id, await ensurePhysicalTable(category));
+  for (const category of categories) tables.set(category.id, await ensureLegacyTable(category));
   const [columns] = await pool.query<ColumnRow[]>("SELECT * FROM api_category_columns ORDER BY category_id,position,id");
   for (const column of columns) {
     const table = tables.get(column.category_id);
-    if (table) column.sql_name = await ensurePhysicalColumn(table, column);
+    if (table) column.sql_name = await ensureLegacyColumn(table, column);
   }
   const [migrationRows] = await pool.query<any[]>("SELECT name FROM api_migration_state WHERE name='physical_categories_v1'");
   if (!migrationRows.length) for (const category of categories) {
@@ -163,9 +171,101 @@ async function migrateLegacyData() {
   }
 }
 
+async function migrateReadableTables() {
+  const [done] = await pool.query<any[]>("SELECT 1 FROM api_migration_state WHERE name='readable_tables_v2'");
+  if (done.length) return;
+  const [categories] = await pool.query<CategoryRow[]>("SELECT * FROM api_categories ORDER BY id");
+  const [columns] = await pool.query<ColumnRow[]>("SELECT * FROM api_category_columns ORDER BY category_id,position,id");
+  const targetNames = new Map<number, string>();
+  const usedNames = new Set<string>();
+  for (const category of categories) {
+    const name = tableName(category.id, category.name);
+    if (usedNames.has(name)) throw new Error(`Kategori tablo adı çakışıyor: ${name}`);
+    usedNames.add(name);
+    targetNames.set(category.id, name);
+    const seenColumns = new Set<string>();
+    for (const column of columns.filter(item => item.category_id === category.id)) {
+      const field = columnName(column.id, column.name);
+      if (["id", "legacy_id", "active", "created_at", "updated_at"].includes(field) || seenColumns.has(field)) {
+        throw new Error(`SQL sütun adı çakışıyor: ${category.name}.${field}`);
+      }
+      seenColumns.add(field);
+    }
+  }
+  for (const category of categories) {
+    const target = targetNames.get(category.id)!;
+    if (category.table_name === target) continue;
+    const [existingTable] = await pool.query<any[]>(
+      "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1", [target]);
+    if (existingTable.length && !await hasColumn(target, "legacy_id")) throw new Error(`Tablo adı zaten kullanılıyor: ${target}`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS ${identifier(target)} (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, legacy_id CHAR(36) NULL UNIQUE,
+      active TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+    const fields = columns.filter(item => item.category_id === category.id);
+    for (const field of fields) {
+      const name = columnName(field.id, field.name);
+      if (!await hasColumn(target, name)) await pool.query(`ALTER TABLE ${identifier(target)} ADD COLUMN ${identifier(name)} ${sqlType(field.field_type)}`);
+    }
+    const oldTable = identifier(category.table_name!);
+    const [oldRows] = await pool.query<any[]>(`SELECT * FROM ${oldTable} ORDER BY created_at,id`);
+    for (const old of oldRows) {
+      const ordinary = fields.filter(field => field.field_type !== "relation");
+      const names = ["legacy_id", "active", "created_at", "updated_at", ...ordinary.map(field => columnName(field.id, field.name))];
+      const values = [old.id, old.active, old.created_at, old.updated_at, ...ordinary.map(field => old[field.sql_name!])];
+      await pool.query(`INSERT INTO ${identifier(target)} (${names.map(identifier).join(",")}) VALUES (${names.map(() => "?").join(",")}) ON DUPLICATE KEY UPDATE legacy_id=VALUES(legacy_id)`, values);
+    }
+  }
+  // Resolve every old UUID only after all target tables contain their numeric IDs.
+  for (const category of categories) {
+    const target = targetNames.get(category.id)!;
+    if (category.table_name === target) continue;
+    const fields = columns.filter(item => item.category_id === category.id && item.field_type === "relation" && item.reference_category_id);
+    for (const field of fields) {
+      const referenced = targetNames.get(field.reference_category_id!);
+      if (!referenced) throw new Error(`İlişki hedefi bulunamadı: ${field.name}`);
+      await pool.query(`UPDATE ${identifier(target)} current_row
+        JOIN ${identifier(category.table_name!)} old_row ON old_row.id=current_row.legacy_id
+        LEFT JOIN ${identifier(referenced)} referenced_row ON referenced_row.legacy_id=old_row.${identifier(field.sql_name!)}
+        SET current_row.${identifier(columnName(field.id, field.name))}=referenced_row.id`);
+    }
+    if (fields.length) await pool.query(`UPDATE ${identifier(target)} current_row
+      JOIN ${identifier(category.table_name!)} old_row ON old_row.id=current_row.legacy_id
+      SET current_row.updated_at=old_row.updated_at`);
+  }
+  for (const category of categories) {
+    const target = targetNames.get(category.id)!;
+    for (const field of columns.filter(item => item.category_id === category.id && item.field_type === "relation" && item.reference_category_id)) {
+      await addForeignKey(target, { ...field, sql_name: columnName(field.id, field.name) }, targetNames.get(field.reference_category_id!)!);
+    }
+  }
+  await withTransaction(async connection => {
+    for (const category of categories) await connection.query("UPDATE api_categories SET table_name=? WHERE id=?", [targetNames.get(category.id), category.id]);
+    for (const field of columns) await connection.query("UPDATE api_category_columns SET sql_name=? WHERE id=?", [columnName(field.id, field.name), field.id]);
+    await connection.query("INSERT INTO api_migration_state(name) VALUES ('readable_tables_v2')");
+  });
+}
+
+async function removeMigrationColumns() {
+  const [categories] = await pool.query<CategoryRow[]>("SELECT * FROM api_categories WHERE table_name IS NOT NULL");
+  for (const category of categories) {
+    const name = category.table_name;
+    if (name && await hasColumn(name, "legacy_id")) {
+      await pool.query(`ALTER TABLE ${identifier(name)} DROP COLUMN legacy_id`);
+    }
+  }
+}
+
 let initialization: Promise<void> | null = null;
 export async function initDatabase() {
-  if (!initialization) initialization = (async () => { await createMetadata(); await migrateLegacyData(); })().catch(error => { initialization = null; throw error; });
+  if (!initialization) initialization = (async () => {
+    await createMetadata();
+    const [done] = await pool.query<any[]>("SELECT 1 FROM api_migration_state WHERE name='readable_tables_v2'");
+    if (!done.length) { await migrateLegacyData(); await migrateReadableTables(); }
+    await removeMigrationColumns();
+  })().catch(error => { initialization = null; throw error; });
   await initialization;
 }
 

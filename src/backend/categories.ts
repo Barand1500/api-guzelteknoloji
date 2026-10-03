@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { addForeignKey, columnName, ensurePhysicalColumn, ensurePhysicalTable, identifier, initDatabase, pool, sqlType, tableName, withTransaction, type CategoryRow, type ColumnRow } from "./database.js";
+import { addForeignKey, columnName, ensurePhysicalTable, identifier, initDatabase, pool, sqlType, tableName, withTransaction, type CategoryRow, type ColumnRow } from "./database.js";
 
 export type FieldType = "text" | "number" | "boolean" | "date" | "relation";
 const fieldTypes = new Set<FieldType>(["text", "number", "boolean", "date", "relation"]);
@@ -46,6 +45,9 @@ export async function createCategory(name: string, slugInput: string) {
   name = name.trim();
   const slug = normalizeSlug(slugInput || name);
   if (!name || name.length > 120 || !slug) throw new InputError("Geçerli bir kategori adı girin");
+  const sqlTable = tableName(0, name);
+  const [used] = await pool.query<any[]>("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1", [sqlTable]);
+  if (used.length) throw new InputError("Bu kategori adı bir MySQL tablosunda zaten kullanılıyor", 409);
   const [result] = await pool.query<any>("INSERT INTO api_categories(name,slug,active) VALUES (?,?,1)", [name, slug]);
   const id = Number(result.insertId);
   try { await ensurePhysicalTable(await categoryById(id)); }
@@ -58,7 +60,17 @@ export async function updateCategory(id: number, input: { name?: unknown; active
   const name = input.name === undefined ? category.name : String(input.name).trim();
   const active = input.active === undefined ? Boolean(category.active) : input.active;
   if (!name || name.length > 120 || typeof active !== "boolean") throw new InputError("Kategori bilgileri geçersiz");
-  await pool.query("UPDATE api_categories SET name=?,active=? WHERE id=?", [name, active ? 1 : 0, id]);
+  const nextTable = tableName(id, name);
+  if (nextTable !== category.table_name) {
+    const [used] = await pool.query<any[]>("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1", [nextTable]);
+    if (used.length) throw new InputError("Bu kategori adı bir MySQL tablosunda zaten kullanılıyor", 409);
+    await pool.query(`RENAME TABLE ${identifier(category.table_name!)} TO ${identifier(nextTable)}`);
+  }
+  try { await pool.query("UPDATE api_categories SET name=?,active=?,table_name=? WHERE id=?", [name, active ? 1 : 0, nextTable, id]); }
+  catch (error) {
+    if (nextTable !== category.table_name) await pool.query(`RENAME TABLE ${identifier(nextTable)} TO ${identifier(category.table_name!)}`);
+    throw error;
+  }
   return visibleCategory(await categoryById(id));
 }
 
@@ -80,7 +92,10 @@ export async function addColumn(categoryId: number, input: { name: unknown; fiel
   const name = String(input.name || "").trim();
   const fieldType = String(input.fieldType || "text") as FieldType;
   const referenceCategoryId = fieldType === "relation" ? Number(input.referenceCategoryId) : null;
-  if (!name || name.length > 120 || ["id", "created_at", "updated_at", "active"].includes(name.toLowerCase())) throw new InputError("Geçerli bir sütun adı girin");
+  const sqlName = columnName(0, name);
+  if (!name || name.length > 120 || ["id", "legacy_id", "created_at", "updated_at", "active"].includes(sqlName)) throw new InputError("Geçerli bir sütun adı girin");
+  const [usedNames] = await pool.query<any[]>("SELECT name FROM api_category_columns WHERE category_id=?", [categoryId]);
+  if (usedNames.some(item => columnName(0, item.name) === sqlName)) throw new InputError("Bu SQL sütun adı zaten kullanılıyor", 409);
   if (!fieldTypes.has(fieldType)) throw new InputError("Sütun türü geçersiz");
   if (fieldType === "relation" && (!referenceCategoryId || referenceCategoryId === categoryId)) throw new InputError("Farklı bir hedef kategori seçin");
   const target = referenceCategoryId ? await categoryById(referenceCategoryId) : null;
@@ -89,7 +104,7 @@ export async function addColumn(categoryId: number, input: { name: unknown; fiel
     "INSERT INTO api_category_columns(category_id,name,field_type,position,reference_category_id) VALUES (?,?,?,?,?)",
     [categoryId, name, fieldType, positions[0].nextPosition, referenceCategoryId],
   );
-  const id = Number(result.insertId), sqlName = columnName(id, name);
+  const id = Number(result.insertId);
   try {
     await pool.query(`ALTER TABLE ${identifier(category.table_name!)} ADD COLUMN ${identifier(sqlName)} ${sqlType(fieldType)}`);
     await pool.query("UPDATE api_category_columns SET sql_name=? WHERE id=?", [sqlName, id]);
@@ -106,6 +121,11 @@ export async function deleteColumn(categoryId: number, columnId: number) {
   const category = await categoryById(categoryId);
   const column = (await columnRows(categoryId)).find(item => item.id === columnId);
   if (!column) throw new InputError("Sütun bulunamadı", 404);
+  if (column.field_type === "relation") {
+    const constraint = `fk_gtk_${column.id}`;
+    const [found] = await pool.query<any[]>("SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME=? AND CONSTRAINT_NAME=? LIMIT 1", [category.table_name, constraint]);
+    if (found.length) await pool.query(`ALTER TABLE ${identifier(category.table_name!)} DROP FOREIGN KEY ${identifier(constraint)}`);
+  }
   await pool.query(`ALTER TABLE ${identifier(category.table_name!)} DROP COLUMN ${identifier(column.sql_name!)}`);
   await pool.query("DELETE FROM api_category_columns WHERE id=?", [columnId]);
 }
@@ -122,14 +142,17 @@ function dataValue(value: unknown, fieldType: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw new InputError("Tarih YYYY-AA-GG biçiminde olmalı");
     return String(value);
   }
-  if (fieldType === "relation" && !/^[0-9a-f-]{36}$/i.test(String(value))) throw new InputError("İlişkili kayıt geçersiz");
+  if (fieldType === "relation") {
+    if (!/^[1-9]\d*$/.test(String(value))) throw new InputError("İlişkili kayıt geçersiz");
+    return Number(value);
+  }
   return String(value);
 }
 
 async function rowValues(table: string, fields: ColumnRow[], publicOnly: boolean) {
   const [rows] = await pool.query<any[]>(`SELECT * FROM ${identifier(table)} ${publicOnly ? "WHERE active=1" : ""} ORDER BY updated_at DESC`);
   return rows.map(row => ({
-    id: row.id, active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at,
+    id: String(row.id), active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at,
     data: Object.fromEntries(fields.map(field => {
       const value = row[field.sql_name!];
       return [String(field.id), value instanceof Date ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}` : value === null ? "" : String(value)];
@@ -161,12 +184,12 @@ export async function saveRows(categoryId: number, inputRows: any[]) {
     const [existing] = await connection.query<any[]>(`SELECT id FROM ${table}`);
     const remaining = new Set(existing.map(row => String(row.id)));
     for (const row of inputRows) {
-      const id = typeof row.id === "string" && /^[0-9a-f-]{36}$/i.test(row.id) ? row.id : randomUUID();
+      const id = typeof row.id === "string" && /^[1-9]\d*$/.test(row.id) && remaining.has(row.id) ? Number(row.id) : null;
       const values = fields.map(field => dataValue(row.data?.[String(field.id)] ?? row.data?.[field.name], field.field_type));
-      const names = ["id", "active", ...fields.map(field => field.sql_name!)];
-      const inserts = [id, row.active === false ? 0 : 1, ...values];
-      await connection.query(`INSERT INTO ${table} (${names.map(identifier).join(",")}) VALUES (${names.map(() => "?").join(",")}) ON DUPLICATE KEY UPDATE ${names.slice(1).map(name => `${identifier(name)}=VALUES(${identifier(name)})`).join(",")}`, inserts);
-      remaining.delete(id);
+      const names = [...(id === null ? [] : ["id"]), "active", ...fields.map(field => field.sql_name!)];
+      const inserts = [...(id === null ? [] : [id]), row.active === false ? 0 : 1, ...values];
+      await connection.query(`INSERT INTO ${table} (${names.map(identifier).join(",")}) VALUES (${names.map(() => "?").join(",")}) ON DUPLICATE KEY UPDATE ${names.slice(id === null ? 0 : 1).map(name => `${identifier(name)}=VALUES(${identifier(name)})`).join(",")}`, inserts);
+      if (id !== null) remaining.delete(String(id));
     }
     for (const id of remaining) await connection.query(`DELETE FROM ${table} WHERE id=?`, [id]);
   });
@@ -178,12 +201,16 @@ export async function saveSchema(categoryId: number, payload: { columns: any[]; 
   const current = await columnRows(categoryId);
   const currentIds = new Set(current.map(field => field.id));
   const normalizedNames = new Set<string>();
+  const normalizedSqlNames = new Set<string>();
   const draftIds = new Set<number>();
   for (const column of payload.columns) {
     const name = String(column.name || "").trim();
     const key = name.toLocaleLowerCase("tr-TR");
     if (!name || name.length > 120 || ["id", "created_at", "updated_at", "active"].includes(key) || normalizedNames.has(key)) throw new InputError("Sütun adı boş, geçersiz veya tekrar ediyor");
     normalizedNames.add(key);
+    const sqlName = columnName(0, name);
+    if (["id", "legacy_id", "active", "created_at", "updated_at"].includes(sqlName) || normalizedSqlNames.has(sqlName)) throw new InputError("SQL sütun adları tekrar ediyor veya ayrılmış bir ad kullanılıyor");
+    normalizedSqlNames.add(sqlName);
     const id = Number(column.id);
     if (!Number.isSafeInteger(id) || id === 0) throw new InputError("Sütun kimliği geçersiz");
     if (id < 0) {
@@ -225,7 +252,7 @@ export async function publicData(category: CategoryRow) {
   const fields = await columnRows(category.id);
   const rows = await rowValues(category.table_name!, fields, true);
   return rows.map(row => ({
-    id: row.id,
+    id: Number(row.id),
     ...Object.fromEntries(fields.map(field => [field.name, row.data[String(field.id)] || null])),
   }));
 }
