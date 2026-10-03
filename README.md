@@ -1,5 +1,15 @@
 # Güzel Teknoloji API Servisi
 
+## Kod düzeni
+
+- `src/`: Express servisi ve MySQL erişimi.
+- `frontend/src/pages/`: Sayfa bazlı React bileşenleri ve sayfa stilleri.
+- `frontend/src/shared/`: Ortak API istemcisi, tipler, bileşenler ve stiller.
+- `frontend/public/`: Derlemeye kopyalanan kaynak görseller.
+- `public/`: `npm run build` ile üretilen çıktı. Git tarafından izlenmez; elle düzenlenmez.
+
+Projede çalışan kod ajanları için ayrıntılı kurallar `AGENTS.md` içindedir.
+
 AnyPay'den bağımsız çalışan veri servisi ve yönetim panelidir.
 
 ## Yerel çalıştırma
