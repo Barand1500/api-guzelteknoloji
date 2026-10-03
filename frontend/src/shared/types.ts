@@ -1,9 +1,9 @@
 export type View = "dashboard" | "new" | "keys" | "media" | "manage" | "settings";
-export type Category = { id: number; name: string; slug: string; active: boolean };
+export type Category = { id: number; name: string; slug: string; tableName?: string; active: boolean };
 export type State = { enabled: boolean; categories: Category[] };
-export type Column = { id: number; name: string; fieldType: string };
-export type DataRow = { id: string; data: Record<string, string>; active: boolean };
-export type Schema = { category: Category; columns: Column[]; rows: DataRow[] };
+export type Column = { id: number; name: string; sqlName?: string; fieldType: "text" | "number" | "boolean" | "date" | "relation"; referenceCategoryId?: number | null };
+export type DataRow = { id: string; data: Record<string, string>; active: boolean; createdAt?: string; updatedAt?: string };
+export type Schema = { category: Category; columns: Column[]; rows: DataRow[]; relationOptions: Record<number, { id: string; label: string }[]> };
 export type ApiKey = {
   id: string;
   projectName: string;

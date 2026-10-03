@@ -1,98 +1,107 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowLeft, CalendarClock, Check, Columns3, Database, Link2, Plus, Save, Trash2 } from "lucide-react";
 import { request } from "../../shared/api";
 import type { Category, Column, DataRow, Schema } from "../../shared/types";
 
-function TrashIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5.5 7l1 13h11l1-13M9 7V4h6v3" /></svg>;
-}
+const types: { value: Column["fieldType"]; label: string }[] = [
+  { value: "text", label: "Metin" }, { value: "number", label: "Sayı" },
+  { value: "boolean", label: "Evet / Hayır" }, { value: "date", label: "Tarih" },
+  { value: "relation", label: "Bağlamsal anahtar" },
+];
+const dateLabel = (value?: string) => value ? new Date(value).toLocaleString("tr-TR") : "Kaydedilince oluşur";
 
 export default function CategoryEditor({ token, category, back }: { token: string; category: Category; back: () => void }) {
   const [schema, setSchema] = useState<Schema | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [options, setOptions] = useState<Schema["relationOptions"]>({});
+  const [name, setName] = useState("");
+  const [fieldType, setFieldType] = useState<Column["fieldType"]>("text");
+  const [referenceCategoryId, setReferenceCategoryId] = useState(0);
   const [error, setError] = useState("");
-  const [columnName, setColumnName] = useState("");
-  const [edit, setEdit] = useState<{ rowId: string; columnId: number } | null>(null);
-  const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const nextDraftId = useRef(-1);
 
   const load = useCallback(async () => {
-    try { setSchema(await request<Schema>(`/admin/categories/${category.id}/schema`, token)); }
-    catch (reason) { setError((reason as Error).message); }
+    const [data, available] = await Promise.all([
+      request<Schema>(`/admin/categories/${category.id}/schema`, token),
+      request<Category[]>("/admin/categories", token),
+    ]);
+    setSchema(data); setCategories(available); setOptions(data.relationOptions || {});
   }, [category.id, token]);
-  useEffect(() => { void load(); }, [load]);
-  if (!schema) return <div className="empty">Yükleniyor…</div>;
-  const current = schema;
+  useEffect(() => { void load().catch(reason => setError((reason as Error).message)); }, [load]);
 
-  function update(next: Schema) { setSchema(next); setDirty(true); setSaved(false); }
-  function addColumn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const name = columnName.trim();
-    if (!name) return;
-    update({ ...current, columns: [...current.columns, { id: -Date.now(), name, fieldType: "text" }] });
-    setColumnName("");
+  async function loadRelationOptions(targetId: number) {
+    if (!targetId || options[targetId]) return;
+    try {
+      const target = await request<Schema>(`/admin/categories/${targetId}/schema`, token);
+      const labelColumn = target.columns.find(column => column.fieldType === "text") || target.columns[0];
+      setOptions(current => ({ ...current, [targetId]: target.rows.map(row => ({
+        id: row.id, label: labelColumn ? row.data[String(labelColumn.id)] || row.id : row.id,
+      })) }));
+    } catch (reason) { setError((reason as Error).message); }
+  }
+
+  function change(next: Schema) { setSchema(next); setDirty(true); setSaved(false); }
+  function addColumn() {
+    if (!schema) return;
+    const label = name.trim();
+    if (!label) { setError("Sütun adını girin"); return; }
+    if (schema.columns.some(column => column.name.toLocaleLowerCase("tr-TR") === label.toLocaleLowerCase("tr-TR"))) { setError("Bu sütun zaten var"); return; }
+    if (fieldType === "relation" && !referenceCategoryId) { setError("İlişkinin hedef kategorisini seçin"); return; }
+    const column: Column = { id: nextDraftId.current--, name: label, fieldType, referenceCategoryId: fieldType === "relation" ? referenceCategoryId : null };
+    change({ ...schema, columns: [...schema.columns, column] });
+    setName(""); setFieldType("text"); setReferenceCategoryId(0); setError("");
   }
   function addRow() {
-    const row: DataRow = { id: `draft-${crypto.randomUUID()}`, data: {}, active: true };
-    update({ ...current, rows: [row, ...current.rows] });
-    if (current.columns[0]) { setEdit({ rowId: row.id, columnId: current.columns[0].id }); setValue(""); }
+    if (!schema || !schema.columns.length) return;
+    change({ ...schema, rows: [{ id: `draft-${crypto.randomUUID()}`, active: true, data: {} }, ...schema.rows] });
   }
-  function commitCell() {
-    if (!edit) return;
-    update({ ...current, rows: current.rows.map(row => row.id === edit.rowId ? { ...row, data: { ...row.data, [String(edit.columnId)]: value } } : row) });
-    setEdit(null);
+  function setCell(rowId: string, columnId: number, value: string) {
+    if (!schema) return;
+    change({ ...schema, rows: schema.rows.map(row => row.id === rowId ? { ...row, data: { ...row.data, [String(columnId)]: value } } : row) });
   }
-  async function saveAll() {
-    if (saving) return;
-    setSaving(true); setError("");
+  async function save() {
+    if (!schema || saving) return;
+    setSaving(true); setError(""); setSaved(false);
     try {
-      const columnMap = new Map<number, number>();
-      for (const column of current.columns) {
-        if (column.id < 0) {
-          const created = await request<Column>(`/admin/categories/${category.id}/columns`, token, { method: "POST", body: JSON.stringify({ name: column.name, fieldType: column.fieldType }) });
-          columnMap.set(column.id, created.id);
-          column.id = created.id;
-        }
-      }
-      const before = await request<Schema>(`/admin/categories/${category.id}/schema`, token);
-      const remainingRows = new Set(before.rows.map(row => row.id));
-      for (const row of current.rows) {
-        const data = Object.fromEntries(Object.entries(row.data).map(([key, item]) => [String(columnMap.get(Number(key)) ?? key), item]));
-        if (row.id.startsWith("draft-")) {
-          await request(`/admin/categories/${category.id}/rows`, token, { method: "POST", body: JSON.stringify({ data, active: row.active }) });
-        } else {
-          await request(`/admin/categories/${category.id}/rows/${row.id}`, token, { method: "PATCH", body: JSON.stringify({ data, active: row.active }) });
-          remainingRows.delete(row.id);
-        }
-      }
-      for (const id of remainingRows) await request(`/admin/categories/${category.id}/rows/${id}`, token, { method: "DELETE" });
-      const after = await request<Schema>(`/admin/categories/${category.id}/schema`, token);
-      for (const column of after.columns) if (!current.columns.some(item => item.id === column.id)) await request(`/admin/categories/${category.id}/columns/${column.id}`, token, { method: "DELETE" });
-      await load(); setDirty(false); setSaved(true);
+      const result = await request<Schema>(`/admin/categories/${category.id}/schema`, token, {
+        method: "PUT", body: JSON.stringify({ columns: schema.columns, rows: schema.rows }),
+      });
+      setSchema(result); setOptions(result.relationOptions || {}); setDirty(false); setSaved(true);
     } catch (reason) { setError((reason as Error).message); }
     finally { setSaving(false); }
   }
+  if (!schema) return <div className="editor-loading">{error || "Veri tablosu yükleniyor…"}</div>;
 
-  return <div className="manager-page">
-    <div className="manager-top manager-hero">
-      <button className="btn soft" onClick={back}>← Geri</button>
-      <div className="manager-title"><div className="eyebrow">KATEGORİ TABLOSU</div><h2>{current.category.name}</h2><code>GET /api/categories/{current.category.slug}</code></div>
-      <button className={`switch ${current.category.active ? "on" : ""}`} onClick={async () => {
-        try { const active = !current.category.active; await request(`/admin/categories/${category.id}`, token, { method: "PATCH", body: JSON.stringify({ active }) }); setSchema({ ...current, category: { ...current.category, active } }); }
+  return <div className="category-editor-page">
+    <div className="editor-crumb"><button onClick={back}><ArrowLeft size={15} /> Genel Yönetim</button><span>›</span><strong>{schema.category.name}</strong></div>
+    <div className="editor-head">
+      <div><div className="editor-kicker"><Database size={15} /> VERİTABANI TABLOSU</div><h2>{schema.category.name}</h2><p>Kayıtları ve SQL sütunlarını bu ekrandan yönetin.</p></div>
+      <div className="editor-head-actions"><span className={`editor-status ${schema.category.active ? "live" : ""}`}>{schema.category.active ? "API açık" : "API kapalı"}</span><button className="editor-secondary" onClick={async () => {
+        try { const active = !schema.category.active; await request(`/admin/categories/${category.id}`, token, { method: "PATCH", body: JSON.stringify({ active }) }); setSchema({ ...schema, category: { ...schema.category, active } }); }
         catch (reason) { setError((reason as Error).message); }
-      }}>{current.category.active ? "API açık" : "API kapalı"}</button>
+      }}>{schema.category.active ? "Kapat" : "Aç"}</button></div>
     </div>
-    <section className="panel schema-panel spreadsheet-panel">
-      <div className="spreadsheet-heading"><div><div className="eyebrow">VERİ TABLOSU</div><h2>{current.category.name} <span>tablosu</span></h2><p>Sütun ve satırları hazırlayın, ardından değişiklikleri birlikte kaydedin.</p></div><div className="table-count"><strong>{current.rows.length}</strong><span>satır</span><i /><strong>{current.columns.length}</strong><span>sütun</span></div></div>
-      <div className="table-tools"><form className="column-add" onSubmit={addColumn}><input value={columnName} onChange={event => setColumnName(event.target.value)} placeholder="Yeni sütun adı (örn. Ülke kodu)" aria-label="Yeni sütun adı" /><button className="btn soft" disabled={!columnName.trim()}>＋ Sütun ekle</button></form><button className="btn" onClick={addRow} disabled={!current.columns.length}>＋ Satır ekle</button></div>
-      {current.columns.length ? <div className="table-wrap spreadsheet-wrap"><table className="table spreadsheet"><thead><tr><th className="row-number-head">#</th>{current.columns.map(column => <th key={column.id}><span>{column.name}</span><button className="icon-button column-delete" onClick={() => update({ ...current, columns: current.columns.filter(item => item.id !== column.id), rows: current.rows.map(row => { const data = { ...row.data }; delete data[String(column.id)]; return { ...row, data }; }) })} title="Sütunu sil" aria-label={`Sütunu sil: ${column.name}`}><TrashIcon /></button></th>)}<th>Durum</th><th className="row-action-head" /></tr></thead>
-        <tbody>{current.rows.map((row, index) => <tr key={row.id}><td className="row-number">{index + 1}</td>{current.columns.map(column => {
-          const editing = edit?.rowId === row.id && edit.columnId === column.id;
-          return <td key={column.id} className="spreadsheet-cell" onDoubleClick={() => { setEdit({ rowId: row.id, columnId: column.id }); setValue(row.data[String(column.id)] ?? ""); }} title="Düzenlemek için çift tıklayın">{editing ? <input autoFocus className="cell-editor" value={value} onChange={event => setValue(event.target.value)} onBlur={commitCell} onKeyDown={event => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setEdit(null); }} /> : <span className={!row.data[String(column.id)] ? "cell-placeholder" : ""}>{row.data[String(column.id)] || "—"}</span>}</td>;
-        })}<td><button className={`switch compact ${row.active ? "on" : ""}`} onClick={() => update({ ...current, rows: current.rows.map(item => item.id === row.id ? { ...item, active: !item.active } : item) })}>{row.active ? "Aktif" : "Kapalı"}</button></td><td className="row-action-cell"><button className="icon-button delete-icon" onClick={() => update({ ...current, rows: current.rows.filter(item => item.id !== row.id) })} title="Satırı sil" aria-label="Satırı sil"><TrashIcon /></button></td></tr>)}</tbody>
-      </table>{!current.rows.length && <div className="table-empty-state"><span>Henüz satır yok</span><small>Tabloya ilk verinizi ekleyin.</small></div>}</div> : <div className="table-empty-state no-columns"><span>Tablo henüz oluşturulmadı</span><small>Önce bir sütun ekleyin.</small></div>}
-      <div className="spreadsheet-footer"><span>{saved ? "Değişiklikler kaydedildi." : dirty ? "Kaydedilmemiş değişiklikler var." : "Tüm değişiklikler kaydedildi."}</span><span>Hücreye çift tıklayarak düzenleyin</span></div>
-      <div className="manager-save-bar"><span>{error && <b role="alert">{error}</b>}</span><button type="button" className="btn save-changes-button" disabled={!dirty || saving} onClick={() => void saveAll()}>{saving ? "Kaydediliyor…" : saved ? "Kaydedildi ✓" : "Değişiklikleri kaydet"}</button></div>
+    <div className="editor-meta"><div><span>MySQL tablosu</span><code>{schema.category.tableName}</code></div><div><span>API adresi</span><code>GET /api/categories/{schema.category.slug}</code></div><div><span>Kayıt</span><strong>{schema.rows.length}</strong></div><div><span>Özel sütun</span><strong>{schema.columns.length}</strong></div></div>
+
+    <section className="editor-card">
+      <div className="editor-section-head"><div><Columns3 size={18} /><div><h3>Sütun yapısı</h3><p>ID ve tarih alanları otomatik yönetilir.</p></div></div></div>
+      <div className="editor-system-columns"><span><Database size={14} /> id <small>Birincil anahtar · salt okunur</small></span><span><CalendarClock size={14} /> created_at <small>Otomatik</small></span><span><CalendarClock size={14} /> updated_at <small>Otomatik</small></span></div>
+      <div className="editor-column-list">{schema.columns.map(column => <div className="editor-column" key={column.id}><span className="editor-column-icon">{column.fieldType === "relation" ? <Link2 size={16} /> : <Columns3 size={16} />}</span><div><strong>{column.name}</strong><small>{types.find(type => type.value === column.fieldType)?.label}{column.referenceCategoryId ? ` · ${categories.find(item => item.id === column.referenceCategoryId)?.name || "Kategori"}` : ""}</small></div><code>{column.sqlName || "Kaydedilince oluşur"}</code><button aria-label={`${column.name} sütununu sil`} title="Sütunu sil" onClick={() => change({ ...schema, columns: schema.columns.filter(item => item.id !== column.id), rows: schema.rows.map(row => { const data = { ...row.data }; delete data[String(column.id)]; return { ...row, data }; }) })}><Trash2 size={16} /></button></div>)}</div>
+      <div className="editor-add-column"><input value={name} onChange={event => setName(event.target.value)} placeholder="Yeni sütun adı" aria-label="Yeni sütun adı" /><select value={fieldType} onChange={event => setFieldType(event.target.value as Column["fieldType"])} aria-label="Sütun türü">{types.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}</select>{fieldType === "relation" && <select value={referenceCategoryId} onChange={event => { const id = Number(event.target.value); setReferenceCategoryId(id); void loadRelationOptions(id); }} aria-label="Hedef kategori"><option value={0}>Hedef kategori seçin</option>{categories.filter(item => item.id !== category.id).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}<button onClick={addColumn}><Plus size={16} /> Sütun ekle</button></div>
     </section>
+
+    <section className="editor-card editor-data-card"><div className="editor-section-head"><div><Database size={18} /><div><h3>Tablo kayıtları</h3><p>Hücrelere doğrudan yazın, ardından kaydedin.</p></div></div><button className="editor-add-row" onClick={addRow} disabled={!schema.columns.length}><Plus size={16} /> Satır ekle</button></div>
+      <div className="editor-table-wrap"><table className="editor-table"><thead><tr><th>#</th><th>id <span>otomatik</span></th>{schema.columns.map(column => <th key={column.id}>{column.name}<small>{types.find(type => type.value === column.fieldType)?.label}</small></th>)}<th>created_at</th><th>updated_at</th><th>Durum</th><th aria-label="İşlemler" /></tr></thead><tbody>{schema.rows.map((row, index) => <tr key={row.id}><td className="editor-row-number">{index + 1}</td><td><code className="editor-readonly-id" title={row.id}>{row.id.startsWith("draft-") ? "Otomatik" : row.id}</code></td>{schema.columns.map(column => <td key={column.id}><CellInput value={row.data[String(column.id)] || ""} column={column} options={options[column.referenceCategoryId || 0] || []} onChange={value => setCell(row.id, column.id, value)} /></td>)}<td className="editor-date">{dateLabel(row.createdAt)}</td><td className="editor-date">{dateLabel(row.updatedAt)}</td><td><button className={`editor-row-toggle ${row.active ? "on" : ""}`} onClick={() => change({ ...schema, rows: schema.rows.map(item => item.id === row.id ? { ...item, active: !item.active } : item) })}>{row.active ? "Aktif" : "Kapalı"}</button></td><td><button className="editor-delete-row" onClick={() => change({ ...schema, rows: schema.rows.filter(item => item.id !== row.id) })} aria-label="Satırı sil"><Trash2 size={16} /></button></td></tr>)}</tbody></table>{!schema.rows.length && <div className="editor-empty">Henüz kayıt yok. İlk satırı ekleyin.</div>}</div>
+    </section>
+    <div className="editor-save-bar"><div>{error ? <span className="editor-error" role="alert">{error}</span> : saved ? <span className="editor-saved"><Check size={16} /> Kaydedildi. Değişiklikler MySQL tablosuna yazıldı.</span> : dirty ? <span>Kaydedilmemiş değişiklikler var.</span> : <span>Tablo güncel.</span>}</div><button onClick={() => void save()} disabled={!dirty || saving}><Save size={17} /> {saving ? "Kaydediliyor…" : "Değişiklikleri kaydet"}</button></div>
   </div>;
+}
+
+function CellInput({ value, column, options, onChange }: { value: string; column: Column; options: { id: string; label: string }[]; onChange: (value: string) => void }) {
+  if (column.fieldType === "relation") return <select value={value} onChange={event => onChange(event.target.value)} aria-label={column.name}><option value="">İlişki seçin</option>{options.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select>;
+  if (column.fieldType === "boolean") return <select value={value} onChange={event => onChange(event.target.value)} aria-label={column.name}><option value="">Boş</option><option value="1">Evet</option><option value="0">Hayır</option></select>;
+  return <input type={column.fieldType === "number" ? "number" : column.fieldType === "date" ? "date" : "text"} step={column.fieldType === "number" ? "any" : undefined} value={value} onChange={event => onChange(event.target.value)} aria-label={column.name} placeholder={column.fieldType === "text" ? "Değer girin" : undefined} />;
 }

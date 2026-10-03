@@ -15,7 +15,7 @@ export default function App() {
     [selected, setSelected] = useState<Category | null>(null),
     [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("gtk_sidebar_collapsed") === "true"),
     [adminTheme, setAdminTheme] = useState<"light" | "dark">(
-      () => localStorage.getItem("gtk_admin_theme") === "light" ? "light" : "dark",
+      () => localStorage.getItem("gtk_admin_theme") === "dark" ? "dark" : "light",
     );
   if (!token)
     return (
