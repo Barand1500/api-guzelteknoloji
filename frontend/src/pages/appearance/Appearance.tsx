@@ -22,7 +22,14 @@ const defaultPreferences: PanelPreferences = {
   sidebarOrder: sidebarPages.map(page => page.id),
   quickAccess: ["dashboard", "keys", null, null, null, null],
   searchWidth: 300,
+  fontFamily: "inter",
 };
+const fonts: { id: PanelPreferences["fontFamily"]; label: string; sample: string; detail: string }[] = [
+  { id: "inter", label: "Inter", sample: "Aa 0123456789", detail: "Net ve dengeli" },
+  { id: "manrope", label: "Manrope", sample: "Aa 0123456789", detail: "Yumuşak ve modern" },
+  { id: "roboto-flex", label: "Roboto Flex", sample: "Aa 0123456789", detail: "Güçlü rakam okunaklılığı" },
+  { id: "ibm-plex-sans", label: "IBM Plex Sans", sample: "Aa 0123456789", detail: "Teknik ve belirgin" },
+];
 
 export default function Appearance({ preferences, onSave }: { preferences: PanelPreferences; onSave: (value: PanelPreferences) => Promise<void> }) {
   const [draft, setDraft] = useState(preferences);
@@ -52,9 +59,11 @@ export default function Appearance({ preferences, onSave }: { preferences: Panel
     const next = [...draft.quickAccess];
     next.forEach((item, slot) => { if (item === dragged.view) next[slot] = null; });
     next[index] = dragged.view;
+    setSaved(false);
     setDraft(current => ({ ...current, quickAccess: next }));
   }
   function removeQuickAccess(index: number) {
+    setSaved(false);
     setDraft(current => ({ ...current, quickAccess: current.quickAccess.map((item, slot) => slot === index ? null : item) }));
   }
   async function save() {
@@ -90,18 +99,33 @@ export default function Appearance({ preferences, onSave }: { preferences: Panel
       </div>
     </section>
     <section className="appearance-card" data-appearance-card>
+      <div className="appearance-card-head"><span><SlidersHorizontal size={18} /></span><div><h2>Yazı tipi</h2><p>Paneldeki metin ve rakamlar için yerel olarak yüklenen fontlardan birini seçin.</p></div></div>
+      <div className="appearance-font-options" role="radiogroup" aria-label="Panel yazı tipi">
+        {fonts.map(font => <button key={font.id} type="button" role="radio" aria-checked={draft.fontFamily === font.id} className={`appearance-font-option ${draft.fontFamily === font.id ? "selected" : ""}`} onClick={() => { setSaved(false); setDraft(current => ({ ...current, fontFamily: font.id })); }}>
+          <strong>{font.label}</strong><span style={{ fontFamily: `var(--font-${font.id})` }}>{font.sample}</span><small>{font.detail}</small>
+        </button>)}
+      </div>
+    </section>
+    <section className="appearance-card" data-appearance-card>
       <div className="appearance-card-head"><span><Search size={18} /></span><div><h2>Arama alanı</h2><p>Üst çubuktaki arama kutusunun genişliğini ayarlayın.</p></div><strong className="appearance-width-value">{draft.searchWidth}px</strong></div>
       <input className="appearance-range" type="range" min="180" max="520" step="10" value={draft.searchWidth} onChange={event => { setSaved(false); setDraft(current => ({ ...current, searchWidth: Number(event.target.value) })); }} aria-label="Arama alanı genişliği" />
       <div className="appearance-range-labels"><span>Dar</span><span>Geniş</span></div>
     </section>
     <section className="appearance-card" data-appearance-card>
-      <div className="appearance-card-head"><span><SlidersHorizontal size={18} /></span><div><h2>Hızlı erişim</h2><p>Sayfaları kutulara sürükleyin; kutuyu boşaltmak için × seçin.</p></div></div>
+      <div className="appearance-card-head"><span><SlidersHorizontal size={18} /></span><div><h2>Hızlı erişim</h2><p>0 ile 10 arasında kutu belirleyin ve sayfaları kutulara sürükleyin.</p></div><strong className="appearance-width-value">{draft.quickAccess.length} / 10</strong></div>
+      <label className="appearance-quick-count">Kutu sayısı
+        <input className="appearance-range" type="range" min="0" max="10" step="1" value={draft.quickAccess.length} onChange={event => {
+          const count = Number(event.target.value);
+          setSaved(false);
+          setDraft(current => ({ ...current, quickAccess: Array.from({ length: count }, (_, index) => current.quickAccess[index] || null) }));
+        }} aria-label="Hızlı erişim kutusu sayısı" />
+      </label>
       <div className="appearance-page-palette">
         {quickPages.map(page => <div key={page.id} draggable onDragStart={event => { setDragged({ view: page.id, zone: "quick" }); event.dataTransfer.setData("text/plain", page.id); event.dataTransfer.effectAllowed = "copy"; }} onDragEnd={() => setDragged(null)}><NavIcon name={page.icon} size={16} />{page.label}</div>)}
       </div>
       <div className="appearance-quick-slots">
-        {Array.from({ length: 6 }, (_, index) => {
-          const page = draft.quickAccess[index] ? pageFor(draft.quickAccess[index]!) : undefined;
+        {draft.quickAccess.map((item, index) => {
+          const page = item ? pageFor(item) : undefined;
           return <div key={index} className={`appearance-quick-slot ${dragged ? "ready" : ""}`} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); putQuickAccess(index); setDragged(null); }}>
             <small>Kutu {index + 1}</small>
             {page ? <div className="appearance-quick-item"><NavIcon name={page.icon} size={17} /><strong>{page.label}</strong><button type="button" onClick={() => removeQuickAccess(index)} aria-label={`${page.label} hızlı erişimden çıkar`}><X size={15} /></button></div> : <span>Buraya sürükleyin</span>}

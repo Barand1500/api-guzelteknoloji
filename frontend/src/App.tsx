@@ -17,6 +17,7 @@ const defaultPreferences: PanelPreferences = {
   sidebarOrder: ["dashboard", "statistics", "playground", "schema-keys", "keys"],
   quickAccess: ["dashboard", "keys", null, null, null, null],
   searchWidth: 300,
+  fontFamily: "inter",
 };
 
 export default function App() {
@@ -51,6 +52,7 @@ export default function App() {
           sidebarOrder: result.sidebarOrder,
           quickAccess: result.quickAccess,
           searchWidth: result.searchWidth,
+          fontFamily: result.fontFamily || "inter",
         };
         if (!result.configured) {
           try {

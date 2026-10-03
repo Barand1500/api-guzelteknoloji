@@ -90,12 +90,12 @@ export default function Settings({ token }: { token: string }) {
   }
 
   return <div className="settings-page">
-    <div className="settings-heading"><span className="settings-kicker">YÖNETİM MERKEZİ</span><h1>Ayarlar</h1><p>Giriş güvenliğini ve yönetim paneli e-posta hizmetini yapılandırın.</p></div>
+    <div className="settings-heading"><h1>Ayarlar</h1><p>Giriş güvenliğini ve yönetim paneli e-posta hizmetini yapılandırın.</p></div>
     <div className="settings-layout">
       <nav className="settings-tabs" aria-label="Ayar bölümleri">
         <span className="settings-tabs-caption">BÖLÜMLER</span>
-        <button className={tab === "login" ? "active" : ""} onClick={() => setTab("login")} aria-current={tab === "login" ? "page" : undefined}><LockKeyhole size={18} /><span>Giriş ve Güvenlik<small>Giriş görseli ve yöntemleri</small></span></button>
-        <button className={tab === "smtp" ? "active" : ""} onClick={() => setTab("smtp")} aria-current={tab === "smtp" ? "page" : undefined}><Mail size={18} /><span>E-posta/SMTP Ayarları<small>Sunucu ve test e-postası</small></span></button>
+        <button className={tab === "login" ? "active" : ""} onClick={() => setTab("login")} aria-current={tab === "login" ? "page" : undefined}><LockKeyhole size={18} /><span>Giriş ve Güvenlik</span></button>
+        <button className={tab === "smtp" ? "active" : ""} onClick={() => setTab("smtp")} aria-current={tab === "smtp" ? "page" : undefined}><Mail size={18} /><span>E-posta/SMTP Ayarları</span></button>
       </nav>
       {tab === "login" ? <form className="settings-content" onSubmit={saveLogin}>
         <div className="settings-content-heading"><div className="settings-content-icon"><LockKeyhole size={20} /></div><div><h2>Giriş ve Güvenlik</h2><p>Yöneticilerin gördüğü giriş sayfasını ve oturum açma yöntemlerini düzenleyin.</p></div></div>

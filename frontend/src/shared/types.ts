@@ -1,7 +1,8 @@
 export type View = "dashboard" | "new" | "keys" | "manage" | "statistics" | "playground" | "schema-keys" | "settings" | "appearance";
 export type PanelPage = Exclude<View, "manage">;
-export type PanelPreferences = { sidebarOrder: PanelPage[]; quickAccess: (PanelPage | null)[]; searchWidth: number };
-export type Category = { id: number; name: string; slug: string; tableName?: string; active: boolean; icon?: string };
+export type PanelPreferences = { sidebarOrder: PanelPage[]; quickAccess: (PanelPage | null)[]; searchWidth: number; fontFamily: "inter" | "manrope" | "roboto-flex" | "ibm-plex-sans" };
+export type CategoryFolder = { id: number; name: string; parentId: number | null };
+export type Category = { id: number; name: string; slug: string; tableName?: string; active: boolean; icon?: string; folderId?: number | null; folderPath?: string };
 export type State = { enabled: boolean; categories: Category[] };
 export type Column = { id: number; name: string; sqlName?: string; fieldType: "text" | "number" | "boolean" | "date" | "relation"; referenceCategoryId?: number | null };
 export type DataRow = { id: string; data: Record<string, string>; active: boolean; createdAt?: string; updatedAt?: string };
@@ -15,6 +16,7 @@ export type ApiKey = {
   siteCount: number;
   categoryNames: string[];
   categoryIds: number[];
+  folderNames: string[];
 };
 export type UsageSummary = {
   from: string;

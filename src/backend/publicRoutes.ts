@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { categoryBySlug, InputError, publicData } from "./categories.js";
+import { apiKeyForCategory, categoryBySlug, InputError, publicData } from "./categories.js";
 import { initDatabase, pool } from "./database.js";
 
 export const publicRoutes = Router();
@@ -33,12 +33,10 @@ async function serveCategory(request: Request, response: Response) {
   if (request.path.startsWith("/api/categories/") && Number(counts[0].total) === 0) {
     return response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data: await publicData(category) });
   }
-  const [keys] = await pool.query<any[]>(`SELECT k.id FROM api_keys k
-    JOIN api_key_categories kc ON kc.api_key_id=k.id
-    WHERE k.api_key=? AND k.active=1 AND kc.category_id=? LIMIT 1`, [apiKey, category.id]);
-  if (!keys[0]) throw new InputError("Bu API için geçerli bir X-API-Key gerekli", 401);
+  const key = await apiKeyForCategory(apiKey, category.id);
+  if (!key) throw new InputError("Bu API için geçerli bir X-API-Key gerekli", 401);
   await pool.query("INSERT INTO api_usage_logs(api_key_id,category_id,origin_host) VALUES(?,?,?)", [
-    keys[0].id, category.id, String(request.headers.origin || request.headers.referer || request.headers.host || "").slice(0, 255),
+    key.id, category.id, String(request.headers.origin || request.headers.referer || request.headers.host || "").slice(0, 255),
   ]);
   response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data: await publicData(category) });
 }

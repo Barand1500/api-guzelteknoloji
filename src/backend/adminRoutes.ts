@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import { requireAuth } from "./auth.js";
-import { addColumn, categories, categoryById, createCategory, deleteCategory, deleteColumn, getSchema, InputError, publicData, saveSchema, updateCategory } from "./categories.js";
+import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders, createCategory, createCategoryFolder, deleteCategory, deleteColumn, getSchema, InputError, publicData, saveSchema, updateCategory } from "./categories.js";
 import { initDatabase, pool, withTransaction } from "./database.js";
 
 export const adminRoutes = Router();
@@ -9,11 +9,12 @@ adminRoutes.use("/admin", requireAuth);
 const panelPages = ["dashboard", "statistics", "playground", "schema-keys", "keys", "new", "settings", "appearance"] as const;
 const sidebarPages = ["dashboard", "statistics", "playground", "schema-keys", "keys"] as const;
 type PanelPage = typeof panelPages[number];
-const defaultPanelPreferences = { sidebarOrder: [...sidebarPages], quickAccess: ["dashboard", "keys", null, null, null, null] as (PanelPage | null)[], searchWidth: 300 };
+const defaultPanelPreferences = { sidebarOrder: [...sidebarPages], quickAccess: ["dashboard", "keys", null, null, null, null] as (PanelPage | null)[], searchWidth: 300, fontFamily: "inter" };
+const fontFamilies = new Set(["inter", "manrope", "roboto-flex", "ibm-plex-sans"]);
 
 async function readPanelPreferences() {
   await initDatabase();
-  const [rows] = await pool.query<any[]>("SELECT sidebar_order,quick_access,search_width FROM api_panel_preferences WHERE id=1");
+  const [rows] = await pool.query<any[]>("SELECT sidebar_order,quick_access,search_width,font_family FROM api_panel_preferences WHERE id=1");
   if (!rows[0]) return { ...defaultPanelPreferences, configured: false };
   const parseList = (value: unknown): unknown => typeof value === "string" ? JSON.parse(value) : value;
   const validPages = new Set<string>(panelPages);
@@ -21,9 +22,9 @@ async function readPanelPreferences() {
   const sidebarOrder = (Array.isArray(storedOrder) ? storedOrder : []).filter((page, index, list) => sidebarPages.includes(page) && list.indexOf(page) === index);
   for (const page of defaultPanelPreferences.sidebarOrder) if (!sidebarOrder.includes(page)) sidebarOrder.push(page);
   const storedQuickAccess = parseList(rows[0].quick_access);
-  const quickAccess = (Array.isArray(storedQuickAccess) ? storedQuickAccess : []).slice(0, 6).map(page => page && validPages.has(page) ? page as PanelPage : null);
-  while (quickAccess.length < 6) quickAccess.push(null);
-  return { sidebarOrder, quickAccess, searchWidth: Math.max(180, Math.min(520, Number(rows[0].search_width) || 300)), configured: true };
+  const quickAccess = (Array.isArray(storedQuickAccess) ? storedQuickAccess : []).slice(0, 10).map(page => page && validPages.has(page) ? page as PanelPage : null);
+  const fontFamily = fontFamilies.has(rows[0].font_family) ? rows[0].font_family : "inter";
+  return { sidebarOrder, quickAccess, searchWidth: Math.max(180, Math.min(520, Number(rows[0].search_width) || 300)), fontFamily, configured: true };
 }
 
 function usageRange(request: Request) {
@@ -58,22 +59,30 @@ adminRoutes.put("/admin/panel-preferences", async (request, response) => {
   const uniquePages = [...new Set(Array.isArray(input.sidebarOrder) ? input.sidebarOrder : [])] as string[];
   if (uniquePages.some(page => !sidebarPages.includes(page as typeof sidebarPages[number]))) throw new InputError("Menü sıralaması geçersiz");
   for (const page of defaultPanelPreferences.sidebarOrder) if (!uniquePages.includes(page)) uniquePages.push(page);
-  if (!Array.isArray(input.quickAccess) || input.quickAccess.length > 6 ||
+  if (!Array.isArray(input.quickAccess) || input.quickAccess.length > 10 ||
       input.quickAccess.some((page: unknown) => page !== null && (typeof page !== "string" || !panelPages.includes(page as PanelPage)))) {
     throw new InputError("Hızlı erişim kutuları geçersiz");
   }
-  const quickAccess = [...new Set(input.quickAccess)] as (PanelPage | null)[];
-  while (quickAccess.length < 6) quickAccess.push(null);
+  const assignedPages = input.quickAccess.filter((page: PanelPage | null): page is PanelPage => page !== null);
+  if (new Set(assignedPages).size !== assignedPages.length) throw new InputError("Aynı sayfa hızlı erişimde birden fazla kullanılamaz");
+  const quickAccess = input.quickAccess as (PanelPage | null)[];
   const searchWidth = Number(input.searchWidth);
   if (!Number.isInteger(searchWidth) || searchWidth < 180 || searchWidth > 520) throw new InputError("Arama alanı genişliği 180–520 piksel arasında olmalı");
-  await pool.query(`INSERT INTO api_panel_preferences(id,sidebar_order,quick_access,search_width)
-    VALUES(1,CAST(? AS JSON),CAST(? AS JSON),?)
-    ON DUPLICATE KEY UPDATE sidebar_order=VALUES(sidebar_order),quick_access=VALUES(quick_access),search_width=VALUES(search_width)`,
-  [JSON.stringify(uniquePages), JSON.stringify(quickAccess), searchWidth]);
+  const fontFamily = String(input.fontFamily || "inter");
+  if (!fontFamilies.has(fontFamily)) throw new InputError("Yazı tipi seçimi geçersiz");
+  await pool.query(`INSERT INTO api_panel_preferences(id,sidebar_order,quick_access,search_width,font_family)
+    VALUES(1,CAST(? AS JSON),CAST(? AS JSON),?,?)
+    ON DUPLICATE KEY UPDATE sidebar_order=VALUES(sidebar_order),quick_access=VALUES(quick_access),search_width=VALUES(search_width),font_family=VALUES(font_family)`,
+  [JSON.stringify(uniquePages), JSON.stringify(quickAccess), searchWidth, fontFamily]);
   response.json({ success: true, data: await readPanelPreferences() });
 });
 
 adminRoutes.get("/admin/categories", async (_request, response) => response.json({ success: true, data: await categories() }));
+adminRoutes.get("/admin/category-folders", async (_request, response) => response.json({ success: true, data: await categoryFolders() }));
+adminRoutes.post("/admin/category-folders", async (request, response) => {
+  const folder = await createCategoryFolder(request.body?.name, request.body?.parentId);
+  response.status(201).json({ success: true, data: folder });
+});
 adminRoutes.get("/admin/schema-overview", async (_request, response) => {
   await initDatabase();
   const categoryList = await categories();
@@ -94,7 +103,7 @@ adminRoutes.get("/admin/schema-overview", async (_request, response) => {
   response.json({ success: true, data: [...byCategory.values()] });
 });
 adminRoutes.post("/admin/categories", async (request, response) => {
-  const data = await createCategory(String(request.body?.name || ""), String(request.body?.slug || ""));
+  const data = await createCategory(String(request.body?.name || ""), String(request.body?.slug || ""), request.body?.folderId);
   response.status(201).json({ success: true, data });
 });
 adminRoutes.patch("/admin/categories/:id", async (request, response) => response.json({ success: true, data: await updateCategory(Number(request.params.id), request.body || {}) }));
@@ -108,14 +117,17 @@ adminRoutes.get("/admin/api-keys", async (_request, response) => {
   await initDatabase();
   const [rows] = await pool.query<any[]>(`SELECT k.id,k.project_name projectName,k.api_key apiKey,k.active,k.created_at createdAt,
     COUNT(DISTINCT l.id) usageCount,COUNT(DISTINCT NULLIF(l.origin_host,'')) siteCount,
-    GROUP_CONCAT(DISTINCT c.name SEPARATOR '||') categoryNames,GROUP_CONCAT(DISTINCT c.id) categoryIds
+    GROUP_CONCAT(DISTINCT c.name SEPARATOR '||') categoryNames,GROUP_CONCAT(DISTINCT c.id) categoryIds,
+    GROUP_CONCAT(DISTINCT f.name SEPARATOR '||') folderNames
     FROM api_keys k LEFT JOIN api_key_categories kc ON kc.api_key_id=k.id
+    LEFT JOIN api_key_folders kf ON kf.api_key_id=k.id LEFT JOIN api_category_folders f ON f.id=kf.folder_id
     LEFT JOIN api_categories c ON c.id=kc.category_id LEFT JOIN api_usage_logs l ON l.api_key_id=k.id
     GROUP BY k.id ORDER BY k.created_at DESC`);
   response.json({ success: true, data: rows.map(row => ({
     ...row, active: Boolean(row.active), usageCount: Number(row.usageCount), siteCount: Number(row.siteCount),
     categoryNames: row.categoryNames ? String(row.categoryNames).split("||") : [],
     categoryIds: row.categoryIds ? String(row.categoryIds).split(",").map(Number) : [],
+    folderNames: row.folderNames ? String(row.folderNames).split("||") : [],
   })) });
 });
 
@@ -184,14 +196,12 @@ adminRoutes.post("/admin/playground/:categoryId", async (request, response) => {
     if (service[0]?.value === "0") throw new InputError("API şu anda kapalı", 503);
     const apiKey = String(request.body?.apiKey || "").trim();
     if (!apiKey || apiKey.length > 96) throw new InputError("Geçerli bir API anahtarı girin", 401);
-    const [keys] = await pool.query<any[]>(`SELECT k.id FROM api_keys k
-      JOIN api_key_categories kc ON kc.api_key_id=k.id
-      WHERE k.api_key=? AND k.active=1 AND kc.category_id=? LIMIT 1`, [apiKey, categoryId]);
-    if (!keys[0]) throw new InputError("Bu anahtar kategoriye erişemiyor veya geçersiz", 401);
+    const key = await apiKeyForCategory(apiKey, categoryId);
+    if (!key) throw new InputError("Bu anahtar kategoriye erişemiyor veya geçersiz", 401);
     const started = performance.now();
     const data = await publicData(category);
     const durationMs = Math.round(performance.now() - started);
-    await pool.query("INSERT INTO api_usage_logs(api_key_id,category_id,origin_host) VALUES(?,?,?)", [keys[0].id, categoryId, "admin-playground"]);
+    await pool.query("INSERT INTO api_usage_logs(api_key_id,category_id,origin_host) VALUES(?,?,?)", [key.id, categoryId, "admin-playground"]);
     response.json({ success: true, data: { status: 200, durationMs, endpoint: `/v1/${category.slug}`, response: { success: true, category: { id: category.id, name: category.name, slug: category.slug }, data } } });
   });
 
@@ -204,10 +214,12 @@ adminRoutes.get("/admin/api-keys/:id", async (request, response) => {
     if (!keys[0]) throw new InputError("API anahtarı bulunamadı", 404);
     const [categoriesForKey] = await pool.query<any[]>(`SELECT c.id,c.name,c.slug,c.active FROM api_key_categories kc
       JOIN api_categories c ON c.id=kc.category_id WHERE kc.api_key_id=? ORDER BY c.name`, [request.params.id]);
+    const [foldersForKey] = await pool.query<any[]>(`SELECT f.id,f.name,f.parent_id parentId FROM api_key_folders kf
+      JOIN api_category_folders f ON f.id=kf.folder_id WHERE kf.api_key_id=? ORDER BY f.name`, [request.params.id]);
     const [recent] = await pool.query<any[]>(`SELECT l.created_at createdAt,l.origin_host originHost,c.name categoryName
       FROM api_usage_logs l LEFT JOIN api_categories c ON c.id=l.category_id
       WHERE l.api_key_id=? ORDER BY l.created_at DESC,l.id DESC LIMIT 20`, [request.params.id]);
-    response.json({ success: true, data: { ...keys[0], active: Boolean(keys[0].active), usageCount: Number(keys[0].usageCount), categories: categoriesForKey.map(item => ({ ...item, active: Boolean(item.active) })), recent } });
+    response.json({ success: true, data: { ...keys[0], active: Boolean(keys[0].active), usageCount: Number(keys[0].usageCount), categories: categoriesForKey.map(item => ({ ...item, active: Boolean(item.active) })), folders: foldersForKey, recent } });
   });
 
 adminRoutes.post("/admin/api-keys/:id/rotate", async (request, response) => {
@@ -221,12 +233,19 @@ adminRoutes.post("/admin/api-keys", async (request, response) => {
   await initDatabase();
   const projectName = String(request.body?.projectName || "").trim();
   const categoryIds = Array.isArray(request.body?.categoryIds) ? [...new Set(request.body.categoryIds.map(Number))] as number[] : [];
-  if (!projectName || !categoryIds.length || categoryIds.some(id => !Number.isSafeInteger(id))) throw new InputError("Proje adı ve en az bir kategori seçin");
+  const folderIds = Array.isArray(request.body?.folderIds) ? [...new Set(request.body.folderIds.map(Number))] as number[] : [];
+  if (!projectName || (!categoryIds.length && !folderIds.length) ||
+      categoryIds.some(id => !Number.isSafeInteger(id)) || folderIds.some(id => !Number.isSafeInteger(id))) throw new InputError("Proje adı ve en az bir kategori veya klasör seçin");
   for (const id of categoryIds) await categoryById(id);
+  if (folderIds.length) {
+    const [folders] = await pool.query<any[]>(`SELECT id FROM api_category_folders WHERE id IN (${folderIds.map(() => "?").join(",")})`, folderIds);
+    if (folders.length !== folderIds.length) throw new InputError("Seçilen klasörlerden biri bulunamadı", 404);
+  }
   const item = { id: randomUUID(), projectName, apiKey: `gtk_${randomUUID().replace(/-/g, "")}`, active: true };
   await withTransaction(async connection => {
     await connection.query("INSERT INTO api_keys(id,project_name,api_key,active) VALUES(?,?,?,1)", [item.id, item.projectName, item.apiKey]);
     for (const id of categoryIds) await connection.query("INSERT INTO api_key_categories(api_key_id,category_id) VALUES(?,?)", [item.id, id]);
+    for (const id of folderIds) await connection.query("INSERT INTO api_key_folders(api_key_id,folder_id) VALUES(?,?)", [item.id, id]);
   });
   response.status(201).json({ success: true, data: item });
 });

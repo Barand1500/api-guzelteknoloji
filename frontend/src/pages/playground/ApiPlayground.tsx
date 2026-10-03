@@ -1,6 +1,6 @@
 import gsap from "gsap";
-import { useEffect, useRef, useState } from "react";
-import { Check, Clock3, Code2, Copy, FlaskConical, Play, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Check, Clock3, Code2, Copy, FlaskConical, LoaderCircle, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { request } from "../../shared/api";
 import type { Category } from "../../shared/types";
 import { Loading } from "../../shared/ui";
@@ -10,6 +10,8 @@ type TestResult = { status: number; durationMs: number; endpoint: string; respon
 
 export default function ApiPlayground({ token }: { token: string }) {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [result, setResult] = useState<TestResult | null>(null);
@@ -18,12 +20,22 @@ export default function ApiPlayground({ token }: { token: string }) {
   const [copied, setCopied] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    request<Category[]>("/admin/categories", token).then(items => {
+  const loadCategories = useCallback(async () => {
+    setCategoriesLoading(true);
+    setCategoriesError("");
+    try {
+      const items = await request<Category[]>("/admin/categories", token);
       setCategories(items);
-      setCategoryId(items.find(item => item.active)?.id.toString() || "");
-    }).catch(reason => setError((reason as Error).message));
+      setCategoryId(current => items.some(item => String(item.id) === current && item.active)
+        ? current
+        : items.find(item => item.active)?.id.toString() || "");
+    } catch (reason) {
+      setCategoriesError((reason as Error).message || "Kategoriler alınamadı.");
+    } finally {
+      setCategoriesLoading(false);
+    }
   }, [token]);
+  useEffect(() => { void loadCategories(); }, [loadCategories]);
   useEffect(() => {
     if (rootRef.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       gsap.fromTo(rootRef.current.querySelectorAll("[data-playground-card]"), { autoAlpha: 0, y: 12 }, { autoAlpha: 1, y: 0, duration: 0.35, stagger: 0.06, ease: "power2.out" });
@@ -62,20 +74,22 @@ export default function ApiPlayground({ token }: { token: string }) {
     }
   }
 
-  if (!categories.length && !error) return <Loading />;
+  if (categoriesLoading) return <Loading />;
   const selected = categories.find(item => String(item.id) === categoryId);
   const endpoint = selected ? `/v1/${selected.slug}` : "/v1/{kategori}";
 
   return <div className="playground-page" ref={rootRef}>
     <header className="playground-heading"><span className="playground-kicker"><FlaskConical size={14} /> GELİŞTİRİCİ ARAÇLARI</span><h1>API Deneme Alanı</h1><p>Gerçek API anahtarınızla kategori endpoint'ini deneyin ve JSON yanıtını inceleyin.</p></header>
+    {categoriesError && <div className="playground-error" role="alert"><AlertCircle size={16} />{categoriesError}<button type="button" onClick={() => void loadCategories()}><RefreshCw size={14} /> Yeniden dene</button></div>}
+    {!categoriesError && !categories.length && <div className="playground-empty" role="status"><AlertCircle size={18} /><div><strong>Henüz test edilecek kategori yok</strong><span>API isteği gönderebilmek için önce Yeni Kategori bölümünden bir kategori oluşturun.</span></div></div>}
     {error && <div className="playground-error" role="alert">{error}</div>}
     <div className="playground-layout">
       <section className="playground-card playground-request" data-playground-card>
         <div className="playground-card-title"><span><Code2 size={18} /></span><div><h2>İstek ayarları</h2><p>İstek sunucuda doğrulanır; API anahtarı tarayıcı adresine eklenmez.</p></div></div>
-        <label className="playground-field">Kategori<select value={categoryId} onChange={event => { setCategoryId(event.target.value); setResult(null); }}><option value="">Kategori seçin</option>{categories.map(item => <option key={item.id} value={item.id} disabled={!item.active}>{item.name}{item.active ? "" : " (API kapalı)"}</option>)}</select></label>
+        <label className="playground-field">Kategori<select value={categoryId} onChange={event => { setCategoryId(event.target.value); setResult(null); }} disabled={!categories.length}><option value="">Kategori seçin</option>{categories.map(item => <option key={item.id} value={item.id} disabled={!item.active}>{item.folderPath ? `${item.folderPath} / ` : ""}{item.name}{item.active ? "" : " (API kapalı)"}</option>)}</select></label>
         <label className="playground-field">X-API-Key<input type="password" autoComplete="off" spellCheck={false} value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder="gtk_..." /></label>
         <div className="playground-endpoint"><span>GET</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard.writeText(endpoint)} title="Endpoint adresini kopyala"><Copy size={15} /></button></div>
-        <button className="playground-run" type="button" disabled={busy || !categoryId || !selected?.active} onClick={() => void runTest()}><Play size={16} />{busy ? "İstek gönderiliyor..." : "API isteğini çalıştır"}</button>
+        <button className="playground-run" type="button" disabled={busy || !categoryId || !selected?.active} onClick={() => void runTest()}>{busy ? <LoaderCircle size={16} className="playground-spinner" /> : <Play size={16} />}{busy ? "İstek gönderiliyor..." : "API isteğini çalıştır"}</button>
         <div className="playground-security"><ShieldCheck size={16} /><span>Anahtar yalnızca test isteği sırasında kullanılır ve bu ekranda saklanmaz.</span></div>
       </section>
       <section className="playground-card playground-response" data-playground-card>

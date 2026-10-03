@@ -30,6 +30,7 @@
 .keys-project-icon { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: #eaf3ff; color: #1f6fd8; }
 .keys-tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .keys-tags span { padding: 5px 8px; border-radius: 7px; background: #eef5ff; color: #2268b9; font-size: 11px; font-weight: 650; }
+.keys-tags span.folder-scope { display:inline-flex; align-items:center; gap:4px; background:#fff7e7; color:#966e20; }
 .keys-tags em { color: #98a4b3; font-style: normal; }
 .keys-value { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; }
 .keys-value code { min-width: 0; color: #174e93; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-all; }

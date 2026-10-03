@@ -20,5 +20,10 @@
 .playground-response-head { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:14px 17px; border-bottom:1px solid #263548; }.playground-response .playground-card-title h2 { color:#eaf1fa; }.playground-response .playground-card-title p { color:#8899ad; }.playground-response .playground-card-title>span { background:#1b2d45; color:#80b9f7; }
 .playground-response-meta { display:flex; align-items:center; gap:10px; color:#9eacbc; font-size:10px; }.playground-response-meta>span { display:flex; align-items:center; gap:4px; }.playground-response-meta .playground-ok { color:#6dd7a7; }.playground-response-meta button { width:29px; height:29px; display:grid; place-items:center; border:1px solid #31445b; border-radius:7px; background:#182538; color:#b9c7d7; }
 .playground-json { flex:1; min-height:310px; max-height:65vh; overflow:auto; margin:0; padding:17px; color:#b8c8dc; font:11px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
-.playground-error { margin:0 0 12px; padding:10px 13px; border-radius:9px; background:#fff0f1; color:#bd354b; font-size:12px; }
+.playground-error { display:flex; align-items:center; gap:8px; margin:0 0 12px; padding:10px 13px; border:1px solid #f1c7cd; border-radius:9px; background:#fff4f5; color:#bd354b; font-size:12px; }
+.playground-error button { display:inline-flex; align-items:center; gap:5px; margin-left:auto; padding:6px 9px; border:1px solid #e5b8bf; border-radius:7px; background:#fff; color:#9c3041; font:inherit; }
+.playground-empty { display:flex; align-items:flex-start; gap:10px; margin-bottom:14px; padding:13px 15px; border:1px solid #ead8ae; border-radius:10px; background:#fffaf0; color:#946b1c; }
+.playground-empty>div { display:grid; gap:3px; }.playground-empty strong { font-size:12px; }.playground-empty span { color:#887958; font-size:11px; }
+.playground-spinner { animation:playground-spin .8s linear infinite; }
+@keyframes playground-spin { to { transform:rotate(360deg); } }
 @media(max-width:800px) { .playground-layout { grid-template-columns:1fr; }.playground-response { min-height:300px; }.playground-json { min-height:230px; } }

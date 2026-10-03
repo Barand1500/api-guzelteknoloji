@@ -60,7 +60,7 @@ Keep this key private and persistent: changing or losing it makes previously sav
 
 ## Panel tools
 
-The administration panel includes combined request statistics/history, an authenticated API playground, schema/API-key management, persistent appearance preferences, and filtering/bulk actions in the category editor. Panel preferences and SMTP overrides are created automatically in `api_panel_preferences` and `api_smtp_settings`.
+The administration panel includes combined request statistics/history, an authenticated API playground, schema/API-key management, persistent appearance preferences, and filtering/bulk actions in the category editor. Appearance preferences include four self-hosted font families and 0–10 quick-access slots. Categories can be organized into nested folders; API keys can target a folder tree (including future categories) or selected individual categories. Folder metadata and folder-scoped key grants are created during database initialization. Panel preferences and SMTP overrides use `api_panel_preferences` and `api_smtp_settings`.
 
 The read-only database table inventory is available with `npm run db:audit`. It reports row counts and possible legacy category tables; it never drops tables. Review `database-audit.txt` and inspect the report before approving any cleanup.
 

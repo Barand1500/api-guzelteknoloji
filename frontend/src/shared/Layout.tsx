@@ -1,5 +1,6 @@
 import gsap from "gsap";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight, Code2, LogOut, Plus, Search } from "lucide-react";
 import { NavIcon } from "./NavIcon";
 import { QuickAccessGhost, QuickAccessSlots, useQuickAccess } from "./QuickAccess";
@@ -46,10 +47,13 @@ export default function Layout({ view, setView, openCategory, token, logout, sid
   const [footerPeek, setFooterPeek] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileMenuPosition, setProfileMenuPosition] = useState({ top: 0, left: 0 });
   const navRef = useRef<HTMLElement>(null);
   const pillRef = useRef<HTMLDivElement>(null);
   const headerSlotRef = useRef<HTMLDivElement>(null);
   const footerBarRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLButtonElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const firstPill = useRef(true);
   const lastCollapsed = useRef(sidebarCollapsed);
   const activeView = view === "manage" || view === "new" ? "dashboard" : view;
@@ -68,6 +72,15 @@ export default function Layout({ view, setView, openCategory, token, logout, sid
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  useEffect(() => {
+    if (!profileOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!profileButtonRef.current?.contains(target) && !profileMenuRef.current?.contains(target)) setProfileOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [profileOpen]);
   useEffect(() => { if (headerSlotRef.current) gsap.to(headerSlotRef.current, { height: !headerAutoHide || headerPeek ? 64 : 0, duration: 0.3, ease: "power3.out" }); }, [headerAutoHide, headerPeek]);
   useEffect(() => { if (footerBarRef.current) gsap.to(footerBarRef.current, { height: !footerAutoHide || footerPeek ? 64 : 0, duration: 0.3, ease: "power3.out" }); }, [footerAutoHide, footerPeek]);
   useLayoutEffect(() => {
@@ -96,11 +109,20 @@ export default function Layout({ view, setView, openCategory, token, logout, sid
     else { setFooterAutoHide(value => !value); setFooterPeek(false); }
   }
   function openPage(next: View) { setView(next); setSearchOpen(false); setProfileOpen(false); }
+  function toggleProfile() {
+    const rect = profileButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setProfileMenuPosition({
+      top: Math.min(rect.bottom + 8, window.innerHeight - 56),
+      left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)),
+    });
+    setProfileOpen(value => !value);
+  }
   async function signOut() { setProfileOpen(false); await playLogoutPortal(); logout(); requestAnimationFrame(() => dismissLogoutPortal()); }
 
-  return <div data-app-shell className={`workspace ${sidebarCollapsed ? "workspace-compact" : ""}`}>
+  return <div data-app-shell data-font-family={preferences.fontFamily} className={`workspace ${sidebarCollapsed ? "workspace-compact" : ""}`}>
     <aside className="workspace-sidebar" onDoubleClick={event => { if (!(event.target as HTMLElement).closest("button,input,a")) toggleSidebar(); }} title="Boş alana çift tıkla: menüyü daralt veya genişlet">
-      <div className="workspace-brand"><span className="workspace-brand-symbol"><Code2 size={28} strokeWidth={2.5} /><b>GT</b></span>{!sidebarCollapsed && <span className="workspace-brand-copy"><strong>GÜZEL TEKNOLOJİ</strong><small>API Yönetim Merkezi</small></span>}</div>
+      <div className="workspace-brand"><span className="workspace-brand-symbol"><Code2 size={28} strokeWidth={2.5} /><b>GT</b></span>{!sidebarCollapsed && <span className="workspace-brand-copy"><strong>GÜZEL TEKNOLOJİ</strong><small>API Paneli</small></span>}</div>
       <div className="workspace-cta-wrap"><button className="workspace-primary" onPointerDown={event => access.pointerDown(event, "new")} onPointerUp={access.cancelHold} onPointerLeave={access.cancelHold} onClick={event => access.onNavClick(event, () => openPage("new"))} title="Yeni kategori"><Plus size={18} /><span>Yeni Kategori</span></button></div>
       <nav ref={navRef} className="workspace-nav" aria-label="Ana menü"><div ref={pillRef} className={`workspace-active-pill ${sidebarCollapsed ? "compact" : ""}`} aria-hidden />
         {orderedPages.map(page => <button key={page.id} className={activeView === page.id ? "is-nav-active" : ""} onPointerDown={event => access.pointerDown(event, page.id)} onPointerUp={access.cancelHold} onPointerLeave={access.cancelHold} onClick={event => access.onNavClick(event, () => openPage(page.id))} title={page.label} aria-current={activeView === page.id ? "page" : undefined}><NavIcon name={page.icon} /><span>{page.label}</span></button>)}
@@ -112,7 +134,7 @@ export default function Layout({ view, setView, openCategory, token, logout, sid
     </aside>
     <div className="workspace-main">
       {headerAutoHide && !headerPeek && <div className="workspace-edge top" onMouseEnter={() => setHeaderPeek(true)} />}
-      <div ref={headerSlotRef} className="workspace-bar-slot" onMouseLeave={() => { if (headerAutoHide) setHeaderPeek(false); }}><header className="workspace-header" onDoubleClick={event => onBarDoubleClick(event, "header")} title="Boş alana çift tıkla: üst çubuğu gizle veya sabitle"><button className="workspace-search" style={{ width: `min(${preferences.searchWidth}px, 38vw)` }} onClick={() => setSearchOpen(true)}><Search size={16} /><span>Ara...</span><kbd>Ctrl+K</kbd></button><QuickAccessSlots access={access} activeView={activeView} onOpen={openPage} /><div className="workspace-header-end"><div className="workspace-profile-wrap"><button className="workspace-account" onClick={() => setProfileOpen(value => !value)} aria-expanded={profileOpen}><span className="workspace-avatar">GT</span><span><strong>Güzel Teknoloji</strong><small>Yönetici</small></span><ChevronRight size={14} /></button>{profileOpen && <div className="workspace-profile-menu"><button onClick={signOut}><LogOut size={16} /> Çıkış yap</button></div>}</div></div></header></div>
+      <div ref={headerSlotRef} className="workspace-bar-slot" onMouseLeave={() => { if (headerAutoHide) setHeaderPeek(false); }}><header className="workspace-header" onDoubleClick={event => onBarDoubleClick(event, "header")} title="Boş alana çift tıkla: üst çubuğu gizle veya sabitle"><button className="workspace-search" style={{ width: `min(${preferences.searchWidth}px, 38vw)` }} onClick={() => setSearchOpen(true)}><Search size={16} /><span>Ara...</span><kbd>Ctrl+K</kbd></button><QuickAccessSlots access={access} activeView={activeView} onOpen={openPage} /><div className="workspace-header-end"><div className="workspace-profile-wrap"><button ref={profileButtonRef} className="workspace-account" onClick={toggleProfile} aria-expanded={profileOpen} aria-haspopup="menu"><span className="workspace-avatar">GT</span><span><strong>Güzel Teknoloji</strong><small>Yönetici</small></span><ChevronRight size={14} /></button></div></div></header></div>
       <main className="workspace-content">
         {preferencesError && <div className="workspace-preferences-error" role="alert">{preferencesError}</div>}
         {view !== "dashboard" && view !== "manage" && view !== "keys" && <div className="workspace-breadcrumb"><button onClick={() => openPage("dashboard")}>Anasayfa</button><ChevronRight size={13} /><strong>{titles[view]}</strong></div>}
@@ -122,6 +144,7 @@ export default function Layout({ view, setView, openCategory, token, logout, sid
       <div ref={footerBarRef} className="workspace-bar-slot" onMouseLeave={() => { if (footerAutoHide) setFooterPeek(false); }}><footer className="workspace-footer" onDoubleClick={event => onBarDoubleClick(event, "footer")} title="Boş alana çift tıkla: alt çubuğu gizle veya sabitle" /></div>
     </div>
     <QuickAccessGhost drag={access.drag} />
+    {profileOpen && createPortal(<div ref={profileMenuRef} className="workspace-profile-menu" style={{ top: profileMenuPosition.top, left: profileMenuPosition.left }} role="menu"><button role="menuitem" onClick={signOut}><LogOut size={16} /> Çıkış yap</button></div>, document.body)}
     {searchOpen && <GlobalSearch token={token} onClose={() => setSearchOpen(false)} onOpenPage={openPage} onOpenCategory={id => { openCategory(id); setSearchOpen(false); }} />}
   </div>;
 }

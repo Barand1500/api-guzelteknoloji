@@ -51,6 +51,10 @@ işlevlerinde kullanılıyor. `api_smtp_settings` ve `api_panel_preferences`
 bu özelliklerle eklenen yapılandırma tablolarıdır. Bunlar da canlı uygulama
 tablolarıdır; yalnızca boş görünmeleri silme gerekçesi değildir.
 
+Klasör hiyerarşisi için `api_category_folders`, `api_category_folder_closure`
+ve `api_key_folders` tabloları kullanılır. Bunlar kategori ağacını ve klasör
+kapsamlı API anahtarı izinlerini saklar; aktif uygulama tablolarıdır.
+
 
 GERÇEK VERİTABANI ENVANTERİ NASIL ALINIR?
 

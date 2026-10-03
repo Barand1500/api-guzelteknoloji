@@ -40,8 +40,8 @@ export function useQuickAccess(slots: (PanelPage | null)[], onChange: (slots: (P
   const suppressClick = useRef(false);
 
   const assign = useCallback((index: number, view: PanelPage | null) => {
-    if (index < 0 || index >= 6) return;
-    const next = Array.from({ length: 6 }, (_, slot) => slots[slot] || null);
+    if (index < 0 || index >= slots.length) return;
+    const next = [...slots];
     if (view) next.forEach((item, slot) => { if (item === view) next[slot] = null; });
     next[index] = view;
     onChange(next);
@@ -94,6 +94,7 @@ export function useQuickAccess(slots: (PanelPage | null)[], onChange: (slots: (P
 }
 
 export function QuickAccessSlots({ access, activeView, onOpen }: { access: Access; activeView: View; onOpen: (view: View) => void }) {
+  if (!access.slots.length) return null;
   return <div className="workspace-quick-access" title="Sol menü öğesini basılı tutup buraya sürükleyin">
     {access.slots.map((view, index) => <div key={index} data-quick-slot={index} className={`workspace-quick-slot ${access.hoverSlot === index ? "drop-target" : ""} ${view === activeView ? "active" : ""}`}>
       {view ? <button title={`${labelByView[view]} · sağ tıkla kaldır`} onClick={() => onOpen(view)} onContextMenu={event => { event.preventDefault(); access.assign(index, null); }}><NavIcon name={iconByView[view]} size={17} /></button> : <span>+</span>}

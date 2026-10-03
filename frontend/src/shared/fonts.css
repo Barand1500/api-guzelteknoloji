@@ -1,0 +1,20 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/roboto-flex";
+@import "@fontsource-variable/ibm-plex-sans";
+
+[data-font-family="inter"] {
+  --panel-font: "Inter Variable", sans-serif;
+}
+
+[data-font-family="manrope"] {
+  --panel-font: "Manrope Variable", sans-serif;
+}
+
+[data-font-family="roboto-flex"] {
+  --panel-font: "Roboto Flex Variable", sans-serif;
+}
+
+[data-font-family="ibm-plex-sans"] {
+  --panel-font: "IBM Plex Sans Variable", sans-serif;
+}

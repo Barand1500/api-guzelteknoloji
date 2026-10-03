@@ -1,6 +1,6 @@
 import gsap from "gsap";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, Check, Clock3, Database, KeyRound, RefreshCw, ShieldCheck, Trash2, Workflow } from "lucide-react";
+import { ArrowRight, Check, Clock3, Database, Folder, KeyRound, RefreshCw, ShieldCheck, Trash2, Workflow } from "lucide-react";
 import { request } from "../../shared/api";
 import type { ApiKey, SchemaOverviewCategory } from "../../shared/types";
 import { Loading } from "../../shared/ui";
@@ -15,6 +15,7 @@ type KeyDetail = {
   usageCount: number;
   lastUsedAt: string | null;
   categories: { id: number; name: string; slug: string; active: boolean }[];
+  folders: { id: number; name: string; parentId: number | null }[];
   recent: { createdAt: string; originHost: string | null; categoryName: string | null }[];
 };
 
@@ -106,7 +107,7 @@ export default function SchemaKeys({ token }: { token: string }) {
       <div className="schema-panel-head"><div><Database size={18} /><div><h2>Kategori ilişkileri</h2><p>Bağlamsal anahtar sütunları hedef tabloya bağlanır.</p></div></div><span>{schema.length} kategori</span></div>
       {!schema.length ? <div className="schema-empty">Henüz kategori şeması bulunmuyor.</div> : <div className="schema-map">
         {schema.map(category => <article className="schema-node" key={category.id}>
-          <header><span><Database size={16} /></span><div><strong>{category.name}</strong><small>{category.tableName}</small></div><i className={category.active ? "active" : ""}>{category.active ? "API açık" : "API kapalı"}</i></header>
+          <header><span><Database size={16} /></span><div><strong>{category.folderPath ? `${category.folderPath} / ${category.name}` : category.name}</strong><small>{category.tableName}</small></div><i className={category.active ? "active" : ""}>{category.active ? "API açık" : "API kapalı"}</i></header>
           <div className="schema-node-columns">{category.columns.length ? category.columns.map(column => <div key={column.id} className={column.referenceCategoryId ? "relation" : ""}><span>{column.name}</span><small>{column.fieldType === "relation" ? "İlişki" : column.fieldType}</small>{column.referenceCategoryId && <span className="schema-relation-target"><ArrowRight size={13} />{column.referenceCategoryName || "Hedef kategori"}</span>}</div>) : <p>Sütun tanımlanmamış</p>}</div>
           <footer><code>GET /v1/{category.slug}</code><span>{category.columns.length} sütun</span></footer>
         </article>)}
@@ -119,7 +120,7 @@ export default function SchemaKeys({ token }: { token: string }) {
         {detail ? <div className="schema-key-detail">
           <div className="schema-detail-title"><div><h3>{detail.projectName}</h3><span className={detail.active ? "active" : ""}>{detail.active ? "Anahtar açık" : "Anahtar kapalı"}</span></div><code>••••{detail.keySuffix}</code></div>
           <div className="schema-detail-metrics"><div><small>Toplam istek</small><strong>{detail.usageCount.toLocaleString("tr-TR")}</strong></div><div><small>Oluşturulma</small><strong>{new Date(detail.createdAt).toLocaleDateString("tr-TR")}</strong></div><div><small>Son kullanım</small><strong>{detail.lastUsedAt ? new Date(detail.lastUsedAt).toLocaleString("tr-TR") : "Henüz yok"}</strong></div></div>
-          <div className="schema-detail-categories"><strong>Erişebildiği kategoriler</strong><div>{detail.categories.map(category => <span key={category.id}>{category.name}{!category.active && " · Kapalı"}</span>)}{!detail.categories.length && <small>Erişim izni bulunmuyor.</small>}</div></div>
+          <div className="schema-detail-categories"><strong>Erişim kapsamı</strong><div>{detail.folders.map(folder => <span className="schema-folder-scope" key={`folder-${folder.id}`}><Folder size={12} />{folder.name} + alt klasörleri</span>)}{detail.categories.map(category => <span key={`category-${category.id}`}>{category.name}{!category.active && " · Kapalı"}</span>)}{!detail.categories.length && !detail.folders.length && <small>Erişim izni bulunmuyor.</small>}</div></div>
           {issuedKey && <div className="schema-issued-key" role="status"><Check size={16} /><div><strong>Yeni anahtar oluşturuldu</strong><code>{issuedKey}</code><small>Bu değeri şimdi güvenli yere kopyalayın. Eski anahtar artık geçersiz.</small></div><button type="button" onClick={() => { void navigator.clipboard.writeText(issuedKey); }} aria-label="Yeni anahtarı kopyala">Kopyala</button></div>}
           <div className="schema-detail-actions"><button disabled={busy} onClick={() => void setActive(!detail.active)}><ShieldCheck size={15} />{detail.active ? "Anahtarı duraklat" : "Anahtarı etkinleştir"}</button><button disabled={busy} onClick={() => void rotate()}><RefreshCw size={15} /> Anahtarı yenile</button><button className="danger" disabled={busy} onClick={() => void removeKey()}><Trash2 size={15} /> Sil</button></div>
           <div className="schema-recent"><strong><Clock3 size={15} /> Son istekler</strong>{detail.recent.length ? detail.recent.slice(0, 5).map((item, index) => <div key={`${item.createdAt}-${index}`}><span>{item.categoryName || "Kategori silinmiş"}</span><small>{item.originHost || "Kaynak bilinmiyor"}</small><time>{new Date(item.createdAt).toLocaleString("tr-TR")}</time></div>) : <p>Henüz kullanım kaydı yok.</p>}</div>

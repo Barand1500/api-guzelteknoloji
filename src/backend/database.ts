@@ -5,8 +5,9 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL tanımlı değil");
 export const pool = mysql.createPool(databaseUrl);
 
-export interface CategoryRow extends RowDataPacket { id: number; name: string; slug: string; table_name: string | null; icon: string; active: number; created_at: Date; updated_at: Date }
+export interface CategoryRow extends RowDataPacket { id: number; name: string; slug: string; table_name: string | null; icon: string; active: number; folder_id: number | null; created_at: Date; updated_at: Date }
 export interface ColumnRow extends RowDataPacket { id: number; category_id: number; name: string; sql_name: string | null; field_type: string; reference_category_id: number | null; position: number }
+export interface CategoryFolderRow extends RowDataPacket { id: number; name: string; parent_id: number | null; created_at: Date }
 
 export function identifier(value: string): string {
   if (!/^[a-z][a-z0-9_]{0,63}$/.test(value)) throw new Error("Geçersiz SQL tanımlayıcısı");
@@ -68,6 +69,19 @@ export async function addForeignKey(table: string, column: ColumnRow, targetTabl
 }
 
 async function createMetadata() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_category_folders (
+    id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(120) NOT NULL, parent_id INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_category_folders_parent (parent_id),
+    CONSTRAINT fk_category_folder_parent FOREIGN KEY (parent_id) REFERENCES api_category_folders(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_category_folder_closure (
+    ancestor_id INT NOT NULL, descendant_id INT NOT NULL,
+    PRIMARY KEY (ancestor_id,descendant_id),
+    INDEX idx_category_folder_descendant (descendant_id),
+    CONSTRAINT fk_folder_closure_ancestor FOREIGN KEY (ancestor_id) REFERENCES api_category_folders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_folder_closure_descendant FOREIGN KEY (descendant_id) REFERENCES api_category_folders(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_categories (
     id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(120) NOT NULL, slug VARCHAR(140) NOT NULL UNIQUE,
     active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -101,6 +115,12 @@ async function createMetadata() {
     CONSTRAINT fk_key_category_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
     CONSTRAINT fk_key_category_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_key_folders (
+    api_key_id CHAR(36) NOT NULL, folder_id INT NOT NULL,
+    PRIMARY KEY (api_key_id,folder_id),
+    CONSTRAINT fk_key_folder_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
+    CONSTRAINT fk_key_folder_folder FOREIGN KEY (folder_id) REFERENCES api_category_folders(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_usage_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY, api_key_id CHAR(36) NOT NULL,
     category_id INT NULL, origin_host VARCHAR(255) NULL,
@@ -122,7 +142,7 @@ async function createMetadata() {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_panel_preferences (
     id INT PRIMARY KEY, sidebar_order JSON NOT NULL, quick_access JSON NOT NULL,
-    search_width SMALLINT UNSIGNED NOT NULL DEFAULT 300,
+    search_width SMALLINT UNSIGNED NOT NULL DEFAULT 300, font_family VARCHAR(32) NOT NULL DEFAULT 'inter',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query("CREATE TABLE IF NOT EXISTS api_settings (id INT PRIMARY KEY, value VARCHAR(16) NOT NULL)");
@@ -130,6 +150,12 @@ async function createMetadata() {
   await addMetadataColumn("api_categories", "table_name", "VARCHAR(64) NULL UNIQUE");
   await addMetadataColumn("api_categories", "icon", "VARCHAR(24) NOT NULL DEFAULT 'code'");
   await addMetadataColumn("api_categories", "updated_at", "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+  await addMetadataColumn("api_categories", "folder_id", "INT NULL");
+  const [folderConstraint] = await pool.query<any[]>(
+    "SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='api_categories' AND CONSTRAINT_NAME='fk_api_category_folder' LIMIT 1",
+  );
+  if (!folderConstraint.length) await pool.query("ALTER TABLE api_categories ADD CONSTRAINT fk_api_category_folder FOREIGN KEY (folder_id) REFERENCES api_category_folders(id) ON DELETE SET NULL");
+  await addMetadataColumn("api_panel_preferences", "font_family", "VARCHAR(32) NOT NULL DEFAULT 'inter'");
   await addMetadataColumn("api_category_columns", "sql_name", "VARCHAR(64) NULL");
   await addMetadataColumn("api_category_columns", "reference_category_id", "INT NULL");
   await pool.query("UPDATE api_category_columns SET field_type='text' WHERE field_type NOT IN ('text','number','boolean','date','relation')");
