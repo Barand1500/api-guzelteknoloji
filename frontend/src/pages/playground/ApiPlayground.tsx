@@ -79,7 +79,7 @@ export default function ApiPlayground({ token }: { token: string }) {
   const endpoint = selected ? `/v1/${selected.slug}` : "/v1/{kategori}";
 
   return <div className="playground-page" ref={rootRef}>
-    <header className="playground-heading"><span className="playground-kicker"><FlaskConical size={14} /> GELİŞTİRİCİ ARAÇLARI</span><h1>API Deneme Alanı</h1><p>Gerçek API anahtarınızla kategori endpoint'ini deneyin ve JSON yanıtını inceleyin.</p></header>
+    <header className="playground-heading"><span className="playground-kicker"><FlaskConical size={14} /> GELİŞTİRİCİ ARAÇLARI</span><h1>API Deneme Alanı</h1></header>
     {categoriesError && <div className="playground-error" role="alert"><AlertCircle size={16} />{categoriesError}<button type="button" onClick={() => void loadCategories()}><RefreshCw size={14} /> Yeniden dene</button></div>}
     {!categoriesError && !categories.length && <div className="playground-empty" role="status"><AlertCircle size={18} /><div><strong>Henüz test edilecek kategori yok</strong><span>API isteği gönderebilmek için önce Yeni Kategori bölümünden bir kategori oluşturun.</span></div></div>}
     {error && <div className="playground-error" role="alert">{error}</div>}

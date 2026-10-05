@@ -90,7 +90,7 @@ export default function Settings({ token }: { token: string }) {
   }
 
   return <div className="settings-page">
-    <div className="settings-heading"><h1>Ayarlar</h1><p>Giriş güvenliğini ve yönetim paneli e-posta hizmetini yapılandırın.</p></div>
+    <div className="settings-heading"><h1>Ayarlar</h1></div>
     <div className="settings-layout">
       <nav className="settings-tabs" aria-label="Ayar bölümleri">
         <span className="settings-tabs-caption">BÖLÜMLER</span>

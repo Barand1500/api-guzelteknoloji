@@ -14,13 +14,6 @@ function displayValue(value: unknown): string {
   return String(value);
 }
 
-function fileSize(bytes: number | null) {
-  if (bytes === null) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  const power = Math.min(3, Math.floor(Math.log(bytes) / Math.log(1024)));
-  return `${new Intl.NumberFormat("tr-TR", { maximumFractionDigits: 1 }).format(bytes / 1024 ** power)} ${["B", "KB", "MB", "GB"][power]}`;
-}
-
 export default function Schema({ token }: { token: string }) {
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
   const [selectedName, setSelectedName] = useState("");
@@ -79,7 +72,7 @@ export default function Schema({ token }: { token: string }) {
   if (loading && !schema) return <Loading />;
   return <div className="schema-page">
     <header className="schema-heading">
-      <div><span className="schema-kicker">VERİTABANI GEZGİNİ</span><h1>Şema</h1><p>Tabloların kayıtlarını, sütunlarını ve bağlantılarını inceleyin.</p></div>
+      <div><span className="schema-kicker">VERİTABANI GEZGİNİ</span><h1>Şema</h1></div>
       <button className="schema-refresh" onClick={() => { void load(); setRefreshKey(value => value + 1); }} disabled={loading}><RefreshCw size={17} className={loading ? "schema-spin" : ""} /> Yenile</button>
     </header>
     {error && <div className="schema-error" role="alert">{error}</div>}
@@ -93,14 +86,14 @@ export default function Schema({ token }: { token: string }) {
       </aside>
       <main className="schema-main">
         {selected ? <>
-          <div className="schema-main-head"><div><span className="schema-main-kind">{selected.category ? "KATEGORİ TABLOSU" : selected.kind === "VIEW" ? "GÖRÜNÜM" : "MYSQL TABLOSU"}</span><h2>{selected.name}</h2></div><div className="schema-main-stats"><span><b>{selected.columns.length}</b> sütun</span><span><b>{selected.estimatedRows === null ? "—" : selected.estimatedRows.toLocaleString("tr-TR")}</b> tahmini kayıt</span><span><b>{fileSize(selected.dataBytes === null && selected.indexBytes === null ? null : (selected.dataBytes || 0) + (selected.indexBytes || 0))}</b> boyut</span></div></div>
+          <div className="schema-main-head"><div><span className="schema-main-kind">{selected.category ? "KATEGORİ TABLOSU" : selected.kind === "VIEW" ? "GÖRÜNÜM" : "MYSQL TABLOSU"}</span><h2>{selected.name}</h2></div></div>
           <div className="schema-tabs" role="tablist" aria-label="Tablo görünümü"><button role="tab" aria-selected={view === "data"} className={view === "data" ? "active" : ""} onClick={() => setView("data")}>Kayıtlar</button><button role="tab" aria-selected={view === "columns"} className={view === "columns" ? "active" : ""} onClick={() => setView("columns")}>Sütun yapısı</button></div>
           {view === "data" ? <section className="schema-content" aria-label="Tablo kayıtları">
-            <div className="schema-content-title"><div><h3>Tablo içeriği</h3><p>Veriler doğrudan veritabanından okunur.</p></div><span>{rows?.total.toLocaleString("tr-TR") ?? "—"} kayıt</span></div>
+            <div className="schema-content-title"><h3>Tablo içeriği</h3><span>{rows?.total.toLocaleString("tr-TR") ?? "—"} kayıt</span></div>
             {rowsError && <div className="schema-error" role="alert">{rowsError}</div>}
             <div className="schema-grid-scroll"><table><thead><tr>{selected.columns.map(column => <th key={column.name}>{column.name}</th>)}</tr></thead><tbody>{!rowsLoading && rows?.rows.map((row, index) => <tr key={`${page}-${index}`}>{selected.columns.map(column => <td key={column.name} title={displayValue(row[column.name])} className={row[column.name] == null ? "schema-null" : ""}>{displayValue(row[column.name])}</td>)}</tr>)}</tbody></table>{rowsLoading && <div className="schema-grid-message">Kayıtlar yükleniyor...</div>}{!rowsLoading && !rowsError && rows?.rows.length === 0 && <div className="schema-grid-message">Bu tabloda henüz kayıt yok.</div>}</div>
             <div className="schema-pagination"><span>{rows?.total ? `${(page - 1) * 25 + 1}–${Math.min(page * 25, rows.total)} / ${rows.total.toLocaleString("tr-TR")}` : "0 kayıt"}</span><div><button onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page === 1 || rowsLoading} aria-label="Önceki sayfa"><ChevronLeft size={17} /></button><strong>{page} / {totalPages}</strong><button onClick={() => setPage(value => Math.min(totalPages, value + 1))} disabled={page >= totalPages || rowsLoading} aria-label="Sonraki sayfa"><ChevronRight size={17} /></button></div></div>
-          </section> : <section className="schema-content" aria-label="Sütun yapısı"><div className="schema-content-title"><div><h3>Sütun yapısı</h3><p>Türler ve anahtarlar MySQL şemasından okunur.</p></div><span>{selected.columns.length} sütun</span></div><div className="schema-grid-scroll"><table><thead><tr><th>Sütun</th><th>SQL tipi</th><th>Anahtar</th><th>NULL</th><th>Varsayılan</th><th>Ek bilgi</th></tr></thead><tbody>{selected.columns.map(column => <tr key={column.name}><td><strong>{column.name}</strong></td><td><code>{column.sqlType}</code></td><td>{column.reference ? <span className="schema-badge foreign"><Link2 size={13} /> FK</span> : column.key === "PRI" ? <span className="schema-badge primary"><KeyRound size={13} /> PK</span> : column.key || "—"}</td><td>{column.nullable ? "Evet" : "Hayır"}</td><td>{column.defaultValue ?? "—"}</td><td>{column.extra || "—"}</td></tr>)}</tbody></table></div></section>}
+          </section> : <section className="schema-content" aria-label="Sütun yapısı"><div className="schema-content-title"><h3>Sütun yapısı</h3><span>{selected.columns.length} sütun</span></div><div className="schema-grid-scroll"><table><thead><tr><th>Sütun</th><th>SQL tipi</th><th>Anahtar</th><th>NULL</th><th>Varsayılan</th><th>Ek bilgi</th></tr></thead><tbody>{selected.columns.map(column => <tr key={column.name}><td><strong>{column.name}</strong></td><td><code>{column.sqlType}</code></td><td>{column.reference ? <span className="schema-badge foreign"><Link2 size={13} /> FK</span> : column.key === "PRI" ? <span className="schema-badge primary"><KeyRound size={13} /> PK</span> : column.key || "—"}</td><td>{column.nullable ? "Evet" : "Hayır"}</td><td>{column.defaultValue ?? "—"}</td><td>{column.extra || "—"}</td></tr>)}</tbody></table></div></section>}
           <section className="schema-relations"><div><h3>İlişkiler</h3><span>{outgoing.length + selected.referencedBy.length}</span></div>{outgoing.length + selected.referencedBy.length ? <div className="schema-relation-list">{outgoing.map(column => <button key={column.name} onClick={() => followRelation(column.reference!.table)}><Link2 size={16} /><span><strong>{column.name}</strong> → {column.reference!.table}.{column.reference!.column}</span></button>)}{selected.referencedBy.map(reference => <button key={`${reference.table}.${reference.column}`} onClick={() => followRelation(reference.table)}><Link2 size={16} /><span><strong>{reference.table}.{reference.column}</strong> → {selected.name}.{reference.targetColumn}</span></button>)}</div> : <p>Bu tabloda tanımlı yabancı anahtar yok.</p>}</section>
         </> : <div className="schema-empty-state"><Database size={29} /><h2>Tablo seçin</h2><p>Soldaki listeden bir tablo seçerek içeriğini görüntüleyin.</p></div>}
       </main>

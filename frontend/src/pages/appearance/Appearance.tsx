@@ -84,7 +84,6 @@ export default function Appearance({ preferences, onSave }: { preferences: Panel
     <header className="appearance-heading">
       <span className="appearance-kicker"><SlidersHorizontal size={14} /> KİŞİSELLEŞTİRME</span>
       <h1>Görünüm</h1>
-      <p>Menü sırasını, hızlı erişim kutularını ve arama alanı genişliğini düzenleyin.</p>
     </header>
     <section className="appearance-card" data-appearance-card>
       <div className="appearance-card-head"><span><GripVertical size={18} /></span><div><h2>Sol menü sırası</h2><p>Sayfaları tutup sürükleyerek sıralayın.</p></div></div>

@@ -16,21 +16,25 @@
 .statistics-metric span { color: #708096; font-size: 13px; font-weight: 600; }
 .statistics-main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(230px, 1fr); gap: 30px; margin-bottom: 31px; }
 .statistics-traffic, .statistics-categories { min-width: 0; }
+.statistics-traffic { padding: 20px 22px 15px; border: 1px solid #dce7f3; border-radius: 16px; background: linear-gradient(160deg, #fff 20%, #f7fbff 100%); box-shadow: 0 9px 25px #1946760b; }
 .statistics-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 16px; }
 .statistics-section-heading h2, .statistics-history-head h2 { margin: 0; font-size: 18px; letter-spacing: -.025em; }
 .statistics-section-heading > span { color: #94a1b1; font-size: 12px; }
-.statistics-chart-scroll { width: 100%; overflow-x: auto; padding-bottom: 5px; scrollbar-color: #c5d5e6 transparent; }
-.statistics-chart { min-width: 490px; height: 240px; display: flex; position: relative; }
-.statistics-chart-axis { width: 48px; height: 207px; flex: none; display: flex; flex-direction: column; justify-content: space-between; padding-right: 9px; color: #9aa7b5; text-align: right; font-size: 10px; font-variant-numeric: tabular-nums; }
-.statistics-chart-plot { min-width: 0; flex: 1; position: relative; padding-bottom: 25px; }
-.statistics-chart-lines { position: absolute; inset: 0 0 25px; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
-.statistics-chart-lines i { display: block; border-top: 1px solid #e5ebf2; }
-.statistics-bars { position: relative; height: 100%; display: flex; align-items: stretch; gap: clamp(4px, .8vw, 10px); }
-.statistics-bar { min-width: 15px; flex: 1; display: flex; flex-direction: column; align-items: center; }
-.statistics-bar-area { width: 100%; height: 207px; display: flex; align-items: flex-end; }
-.statistics-bar-fill { width: 100%; display: block; border-radius: 4px 4px 0 0; background: #a8c8eb; transition: background .2s; }
-.statistics-bar:hover .statistics-bar-fill { background: #2b76d3; }
-.statistics-bar small { max-width: 100%; height: 25px; display: block; overflow: hidden; color: #8a98aa; font-size: 10px; line-height: 25px; text-overflow: clip; white-space: nowrap; }
+.statistics-chart-scroll { width: 100%; overflow-x: auto; padding: 28px 0 5px; scrollbar-color: #c5d5e6 transparent; }
+.statistics-chart { min-width: 490px; height: 258px; display: flex; position: relative; }
+.statistics-chart-axis { width: 50px; height: 217px; flex: none; display: flex; flex-direction: column; justify-content: space-between; padding-right: 10px; color: #8c9db2; text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; }
+.statistics-chart-plot { min-width: 0; flex: 1; position: relative; padding-bottom: 41px; }
+.statistics-chart-lines { position: absolute; inset: 0 0 41px; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+.statistics-chart-lines i { display: block; border-top: 1px dashed #dce8f5; }
+.statistics-bars { position: relative; height: 100%; display: flex; align-items: stretch; gap: 10px; padding: 0 8px; }
+.statistics-bar { min-width: 29px; flex: 1; display: flex; flex-direction: column; align-items: center; }
+.statistics-bar-area { width: 100%; height: 217px; position: relative; display: flex; align-items: flex-end; }
+.statistics-bar-fill { width: 100%; display: block; border-radius: 7px 7px 2px 2px; background: linear-gradient(180deg, #75aeef, #c5ddf7); transition: background .2s, filter .2s; box-shadow: inset 0 1px #ffffff6b; }
+.statistics-bar.peak .statistics-bar-fill { background: linear-gradient(180deg, #1468d0, #6ca9ef); }
+.statistics-bar:hover .statistics-bar-fill { filter: saturate(1.5) brightness(.92); }
+.statistics-bar-value { position: absolute; z-index: 2; left: 50%; transform: translate(-50%, 5px); padding: 5px 7px; border-radius: 7px; background: #203d61; color: #fff; font-size: 11px; font-weight: 750; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; }
+.statistics-bar:hover .statistics-bar-value { opacity: 1; transform: translate(-50%, 0); }
+.statistics-bar small { max-width: 100%; height: 41px; display: grid; place-items: center; overflow: hidden; color: #7288a2; font-size: 10px; white-space: nowrap; }
 .statistics-no-data { padding: 35px 0; color: #8998aa; font-size: 13px; }
 .statistics-categories ol { display: grid; gap: 14px; margin: 25px 0 0; padding: 0; list-style: none; }
 .statistics-categories li { min-width: 0; display: flex; align-items: center; gap: 10px; }

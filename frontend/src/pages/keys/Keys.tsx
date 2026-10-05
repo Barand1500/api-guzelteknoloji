@@ -112,7 +112,7 @@ export default function Keys({ token }: { token: string }) {
 
   return <div className="keys-page">
     <div className="keys-heading">
-      <div><span className="keys-kicker"><KeyRound size={14} /> ERİŞİM YÖNETİMİ</span><h1>API Anahtarları</h1><p>Projelerin hangi kategorilere erişebileceğini buradan yönetin.</p></div>
+      <div><span className="keys-kicker"><KeyRound size={14} /> ERİŞİM YÖNETİMİ</span><h1>API Anahtarları</h1></div>
       <button className="keys-primary" onClick={() => { setError(""); setCreating(true); }}><Plus size={17} /> Yeni anahtar</button>
     </div>
     <section className="keys-panel">

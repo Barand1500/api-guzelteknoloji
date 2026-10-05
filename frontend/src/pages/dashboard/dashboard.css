@@ -1,7 +1,7 @@
 .dashboard-page { width: 100%; color: #1d2a40; }
 .dash-heading { display: flex; align-items: start; justify-content: space-between; gap: 22px; margin: 3px 0 27px; }
+.dash-eyebrow { display: inline-block; margin-bottom: 8px; color: #2270d0; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
 .dash-heading h1 { margin: 0 0 5px; font-size: 30px; letter-spacing: -.035em; }
-.dash-heading p { margin: 0; color: #77869a; font-size: 14px; }
 .dash-service { min-width: 280px; display: flex; align-items: center; gap: 10px; padding: 10px 11px 10px 15px; border: 1px solid #e1e8f0; border-radius: 13px; background: #fff; box-shadow: 0 5px 18px #1a3b6209; }
 .dash-service-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: #16aa73; box-shadow: 0 0 0 4px #16aa731c; }
 .dash-service.stopped .dash-service-dot { background: #e15a68; box-shadow: 0 0 0 4px #e15a681c; }

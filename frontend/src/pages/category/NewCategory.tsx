@@ -134,7 +134,7 @@ export default function NewCategory({ token, done, manage }: Props) {
 
   return <div className="new-category-page">
     <div className="new-category-heading">
-      <div><span className="new-category-eyebrow">API YAPISI</span><h1>{locationLabel}</h1><p>{currentFolderId === null ? "Klasörlerini ve kategorilerini düzenle." : "Bu klasördeki içerikleri yönet."}</p></div>
+      <div><span className="new-category-eyebrow">API YAPISI</span><h1>{locationLabel}</h1></div>
       <div className="new-category-heading-actions"><button type="button" className="new-category-home" onClick={done}><ArrowLeft size={17} /> Genel Yönetim</button><button type="button" className="new-category-primary" onClick={openNew}><Plus size={19} /> Yeni</button></div>
     </div>
     <nav className="new-category-path" aria-label="Klasör yolu"><button type="button" onClick={() => setCurrentFolderId(null)}><Home size={16} /> Ana klasör</button>{path.map(folder => <span key={folder.id}><ArrowRight size={14} /><button type="button" onClick={() => setCurrentFolderId(folder.id)}>{folder.name}</button></span>)}</nav>
