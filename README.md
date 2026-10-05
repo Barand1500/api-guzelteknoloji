@@ -93,6 +93,10 @@ Satırlar artık otomatik `id` sırasıyla okunur. Başlangıç migrasyonu etkin
 
 Yeni sütun türlerinde `Tamsayı (INT)` MySQL `INT`, `Ondalıklı sayı (FLOAT)` MySQL `DOUBLE`, `Boolean (1 / 0)` MySQL `TINYINT(1)` ve `Boolean (true / false)` MySQL `VARCHAR(5)` kullanır. Dış API yeni sayı türlerini JSON sayı, iki Boolean türünü sırasıyla JSON sayı ve JSON Boolean olarak döndürür. Önceden oluşturulmuş `number` sütunları `DECIMAL(20,6)` olarak kalır; verileri dönüştürülmez. Otomatik ID ve tarih alanlarının görünürlüğü yalnız panelde, tarayıcı bazında saklanır; tablo şemasını veya API yanıtını değiştirmez.
 
+Yeni görsel sütunlarında depolama yöntemi sütun oluşturulurken seçilir: `Görsel (uploads)` yalnız sunucudaki dosya yolunu, `Görsel (Base64)` yalnız veri URL'sini kabul eder. Önceki `image` sütunları iki biçimi de kabul etmeyi sürdürür.
+
+Rehber sayfasındaki hareketli Nexus Bot varlığı [VideoMascot](https://github.com/theGoodB0rg/VideoMascot) projesinden alınmıştır (MIT). Kaynak dosya `frontend/public/guide-mascot.webm` içinde tutulur; çalışma sırasında dış CDN gerektirmez.
+
 ## Git ile deploy
 
 Sunucuda proje bir kez klonlandıktan sonra:

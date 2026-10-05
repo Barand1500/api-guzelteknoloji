@@ -16,6 +16,7 @@ const pages: { id: View; title: string; icon: string }[] = [
   { id: "schema-keys", title: "Şema", icon: "database" },
   { id: "settings", title: "Ayarlar", icon: "gear" },
   { id: "appearance", title: "Görünüm", icon: "sliders" },
+  { id: "guide", title: "Rehber", icon: "book" },
 ];
 export function GlobalSearch({ token, onClose, onOpenPage, onOpenCategory }: { token: string; onClose: () => void; onOpenPage: (view: View) => void; onOpenCategory: (id: number) => void }) {
   const [query, setQuery] = useState("");

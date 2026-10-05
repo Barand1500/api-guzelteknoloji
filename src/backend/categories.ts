@@ -1,7 +1,7 @@
 import { addForeignKey, columnName, ensurePhysicalTable, identifier, initDatabase, pool, sqlType, tableName, withTransaction, type CategoryFolderRow, type CategoryRow, type ColumnRow } from "./database.js";
 
-export type FieldType = "text" | "number" | "integer" | "float" | "boolean" | "boolean_text" | "date" | "relation" | "image";
-const fieldTypes = new Set<FieldType>(["text", "number", "integer", "float", "boolean", "boolean_text", "date", "relation", "image"]);
+export type FieldType = "text" | "number" | "integer" | "float" | "boolean" | "boolean_text" | "date" | "relation" | "image" | "image_upload" | "image_base64";
+const fieldTypes = new Set<FieldType>(["text", "number", "integer", "float", "boolean", "boolean_text", "date", "relation", "image", "image_upload", "image_base64"]);
 const categoryIcons = new Set([
   "code", "home", "briefcase", "pulse", "pay", "chart", "sliders", "gear",
   "book", "boxes", "building", "calendar", "cloud", "data", "document",
@@ -242,10 +242,11 @@ function dataValue(value: unknown, fieldType: string) {
     if (!/^[1-9]\d*$/.test(String(value))) throw new InputError("İlişkili kayıt geçersiz");
     return Number(value);
   }
-  if (fieldType === "image") {
+  if (fieldType === "image" || fieldType === "image_upload" || fieldType === "image_base64") {
     const image = String(value);
-    if (!/^\/uploads\/images\/[0-9a-f-]{36}\.(?:png|jpg|webp)$/.test(image) &&
-        !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image)) {
+    const uploaded = /^\/uploads\/images\/[0-9a-f-]{36}\.(?:png|jpg|webp)$/.test(image);
+    const embedded = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image);
+    if (!(fieldType === "image_upload" ? uploaded : fieldType === "image_base64" ? embedded : uploaded || embedded)) {
       throw new InputError("Görsel alanı geçersiz");
     }
     if (image.length > 1_450_000) throw new InputError("Görsel en fazla 1 MB olabilir");
@@ -281,7 +282,7 @@ export async function getSchema(categoryId: number) {
 
 export async function relationChoices(categoryId: number) {
   const target = await categoryById(categoryId);
-  const fields = (await columnRows(categoryId)).filter(field => field.field_type !== "image");
+  const fields = (await columnRows(categoryId)).filter(field => !field.field_type.startsWith("image"));
   const labelField = fields.find(field => field.field_type === "text") || fields[0];
   const selected = fields.map(field => identifier(field.sql_name!));
   const [rows] = await pool.query<any[]>(`SELECT id${selected.length ? `,${selected.join(",")}` : ""} FROM ${identifier(target.table_name!)} ORDER BY id`);
@@ -376,7 +377,7 @@ export async function publicData(category: CategoryRow, baseUrl = "") {
       const value = row.data[String(field.id)] ?? null;
       if (value === null || value === "") return [field.name,
         ["integer", "float", "boolean_text"].includes(field.field_type) ? null : value];
-      if (field.field_type === "image" && typeof value === "string" && value.startsWith("/uploads/")) return [field.name, `${baseUrl}${value}`];
+      if (field.field_type.startsWith("image") && typeof value === "string" && value.startsWith("/uploads/")) return [field.name, `${baseUrl}${value}`];
       if (field.field_type === "integer" || field.field_type === "float" || field.field_type === "boolean") return [field.name, Number(value)];
       if (field.field_type === "boolean_text") return [field.name, value === "true"];
       return [field.name, value];

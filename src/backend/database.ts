@@ -182,7 +182,7 @@ async function createMetadata() {
   if (!usageFolderConstraint.length) await pool.query("ALTER TABLE api_usage_logs ADD CONSTRAINT fk_usage_folder FOREIGN KEY (folder_id) REFERENCES api_category_folders(id) ON DELETE SET NULL");
   await addMetadataColumn("api_category_columns", "sql_name", "VARCHAR(64) NULL");
   await addMetadataColumn("api_category_columns", "reference_category_id", "INT NULL");
-  await pool.query("UPDATE api_category_columns SET field_type='text' WHERE field_type NOT IN ('text','number','integer','float','boolean','boolean_text','date','relation','image')");
+  await pool.query("UPDATE api_category_columns SET field_type='text' WHERE field_type NOT IN ('text','number','integer','float','boolean','boolean_text','date','relation','image','image_upload','image_base64')");
 }
 
 // First bring installations that still store rows as JSON to the previous physical format.

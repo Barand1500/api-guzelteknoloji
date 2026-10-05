@@ -546,6 +546,8 @@
 .workspace-compact .workspace-nav button.is-nav-active { color: #1f6fd8; }
 .workspace-sidebar-bottom > button { color: #73849a; }
 .workspace-sidebar-bottom > button:hover, .workspace-sidebar-bottom > button.selected { background: #eaf3ff; color: #1f6fd8; }
+.workspace-compact .workspace-sidebar-bottom { height: 126px; flex-direction: column; justify-content: center; gap: 2px; }
+@media (max-width: 800px) { .workspace-sidebar-bottom { height: 126px; flex-direction: column; justify-content: center; gap: 2px; } }
 .workspace-header, .workspace-footer, .workspace-sidebar { background: #fff; }
 .workspace-search { border-color: #e3eaf3; background: #f5f8fc; color: #718096; font-size: 13px; }
 .workspace-search:hover { border-color: #a9c9ec; background: #fff; }

@@ -26,7 +26,10 @@ const choices: Record<Group, { type: FieldType; label: string; description: stri
   ],
   date: [{ type: "date", label: "Tarih", description: "YYYY-AA-GG · DATE" }],
   relation: [{ type: "relation", label: "Bağlamsal anahtar", description: "Başka tablonun ID alanına bağlanır" }],
-  image: [{ type: "image", label: "Görsel", description: "Yükleme veya Base64 · LONGTEXT" }],
+  image: [
+    { type: "image_upload", label: "Görsel (uploads)", description: "Dosya sunucuda saklanır; API tam adresini döndürür" },
+    { type: "image_base64", label: "Görsel (Base64)", description: "Görsel doğrudan veritabanında saklanır" },
+  ],
 };
 
 export const fieldTypeLabels: Record<FieldType, string> = {
@@ -39,6 +42,8 @@ export const fieldTypeLabels: Record<FieldType, string> = {
   date: "Tarih",
   relation: "Bağlamsal anahtar",
   image: "Görsel",
+  image_upload: "Görsel (uploads)",
+  image_base64: "Görsel (Base64)",
 };
 
 export default function FieldTypePicker({ value, onChange }: { value: FieldType; onChange: (type: FieldType) => void }) {

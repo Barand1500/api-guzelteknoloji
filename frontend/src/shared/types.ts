@@ -1,10 +1,10 @@
-export type View = "dashboard" | "new" | "keys" | "manage" | "statistics" | "playground" | "schema-keys" | "settings" | "appearance";
-export type PanelPage = Exclude<View, "manage">;
+export type View = "dashboard" | "new" | "keys" | "manage" | "statistics" | "playground" | "schema-keys" | "settings" | "appearance" | "guide";
+export type PanelPage = Exclude<View, "manage" | "guide">;
 export type PanelPreferences = { sidebarOrder: PanelPage[]; quickAccess: (PanelPage | null)[]; searchWidth: number; fontFamily: "inter" | "manrope" | "roboto-flex" | "ibm-plex-sans" };
 export type CategoryFolder = { id: number; name: string; parentId: number | null };
 export type Category = { id: number; name: string; slug: string; tableName?: string; active: boolean; icon?: string; folderId?: number | null; folderPath?: string };
 export type State = { enabled: boolean; categories: Category[] };
-export type Column = { id: number; name: string; sqlName?: string; fieldType: "text" | "number" | "integer" | "float" | "boolean" | "boolean_text" | "date" | "relation" | "image"; referenceCategoryId?: number | null };
+export type Column = { id: number; name: string; sqlName?: string; fieldType: "text" | "number" | "integer" | "float" | "boolean" | "boolean_text" | "date" | "relation" | "image" | "image_upload" | "image_base64"; referenceCategoryId?: number | null };
 export type DataRow = { id: string; data: Record<string, string>; active: boolean; createdAt?: string; updatedAt?: string };
 export type Schema = { category: Category; columns: Column[]; rows: DataRow[]; relationOptions: Record<number, { id: string; label: string; detail?: string }[]> };
 export type ApiKey = {

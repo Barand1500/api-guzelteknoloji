@@ -733,8 +733,8 @@ function CellInput({
 }) {
   if (column.fieldType === "relation")
     return <RelationPicker value={value} label={column.name} options={options} onChange={onChange} />;
-  if (column.fieldType === "image")
-    return <ImageCell value={value} label={column.name} onChange={onChange} onImage={onImage} />;
+  if (column.fieldType === "image" || column.fieldType === "image_upload" || column.fieldType === "image_base64")
+    return <ImageCell value={value} label={column.name} fieldType={column.fieldType} onChange={onChange} onImage={onImage} />;
   if (column.fieldType === "boolean" || column.fieldType === "boolean_text")
     return (
       <select
@@ -788,17 +788,19 @@ function RelationPicker({ value, label, options, onChange }: {
   </>;
 }
 
-function ImageCell({ value, label, onChange, onImage }: {
+function ImageCell({ value, label, fieldType, onChange, onImage }: {
   value: string;
   label: string;
+  fieldType: "image" | "image_upload" | "image_base64";
   onChange: (value: string) => void;
   onImage: (file: File, storage: "upload" | "base64") => Promise<void>;
 }) {
-  const [storage, setStorage] = useState<"upload" | "base64">("upload");
+  const [legacyStorage, setLegacyStorage] = useState<"upload" | "base64">("upload");
+  const storage = fieldType === "image_upload" ? "upload" : fieldType === "image_base64" ? "base64" : legacyStorage;
   const [busy, setBusy] = useState(false);
   return <div className="editor-image-cell">
     {value && <img src={value} alt={label} />}
-    <select value={storage} onChange={event => setStorage(event.target.value as typeof storage)} aria-label="Görsel depolama yöntemi"><option value="upload">Sunucuya yükle</option><option value="base64">Base64 sakla</option></select>
+    {fieldType === "image" && <select value={legacyStorage} onChange={event => setLegacyStorage(event.target.value as typeof legacyStorage)} aria-label="Görsel depolama yöntemi"><option value="upload">Sunucuya yükle</option><option value="base64">Base64 sakla</option></select>}
     <label className="editor-image-picker"><ImagePlus size={15} />{busy ? "Yükleniyor…" : value ? "Değiştir" : "Görsel seç"}<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) { setBusy(true); void onImage(file, storage).finally(() => setBusy(false)); } event.target.value = ""; }} /></label>
     {value && <button type="button" className="editor-image-remove" onClick={() => onChange("")} aria-label="Görseli kaldır"><X size={14} /></button>}
   </div>;

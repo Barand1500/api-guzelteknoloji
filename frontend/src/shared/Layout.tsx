@@ -1,7 +1,7 @@
 import gsap from "gsap";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Code2, LogOut, Plus, Search } from "lucide-react";
+import { ChevronRight, Code2, HelpCircle, LogOut, Plus, Search } from "lucide-react";
 import { NavIcon } from "./NavIcon";
 import { QuickAccessGhost, QuickAccessSlots, useQuickAccess } from "./QuickAccess";
 import { GlobalSearch } from "./GlobalSearch";
@@ -38,6 +38,7 @@ const titles: Record<View, string> = {
   "schema-keys": "Şema",
   settings: "Ayarlar",
   appearance: "Görünüm",
+  guide: "Rehber",
 };
 
 export default function Layout({ view, setView, openCategory, token, logout, sidebarCollapsed, toggleSidebar, preferences, savePreferences, preferencesError, children }: Props) {
@@ -128,6 +129,7 @@ export default function Layout({ view, setView, openCategory, token, logout, sid
         {orderedPages.map(page => <button key={page.id} className={activeView === page.id ? "is-nav-active" : ""} onPointerDown={event => access.pointerDown(event, page.id)} onPointerUp={access.cancelHold} onPointerLeave={access.cancelHold} onClick={event => access.onNavClick(event, () => openPage(page.id))} title={page.label} aria-current={activeView === page.id ? "page" : undefined}><NavIcon name={page.icon} /><span>{page.label}</span></button>)}
       </nav>
       <div className="workspace-sidebar-bottom">
+        <button className={view === "guide" ? "selected" : ""} onClick={() => openPage("guide")} title="Rehber" aria-label="Rehber"><HelpCircle size={20} /></button>
         <button className={view === "appearance" ? "selected" : ""} onClick={() => openPage("appearance")} title="Görünüm" aria-label="Görünüm"><NavIcon name="sliders" size={19} /></button>
         <button className={view === "settings" ? "selected" : ""} onClick={() => openPage("settings")} title="Ayarlar" aria-label="Ayarlar"><NavIcon name="gear" size={19} /></button>
       </div>

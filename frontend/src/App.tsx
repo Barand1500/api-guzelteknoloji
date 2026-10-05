@@ -9,6 +9,9 @@ import Statistics from "./pages/statistics/Statistics";
 import ApiPlayground from "./pages/playground/ApiPlayground";
 import Schema from "./pages/schema/Schema";
 import Appearance from "./pages/appearance/Appearance";
+import Guide from "./pages/guide/Guide";
+import GuideTour from "./pages/guide/GuideTour";
+import { guideSteps } from "./pages/guide/guideContent";
 import Layout from "./shared/Layout";
 import type { Category, PanelPage, PanelPreferences, View } from "./shared/types";
 import { request } from "./shared/api";
@@ -26,7 +29,18 @@ export default function App() {
     [selected, setSelected] = useState<Category | null>(null),
     [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("gtk_sidebar_collapsed") === "true"),
     [preferences, setPreferences] = useState<PanelPreferences>(defaultPreferences),
-    [preferencesError, setPreferencesError] = useState("");
+    [preferencesError, setPreferencesError] = useState(""),
+    [tourStep, setTourStep] = useState<number | null>(null),
+    [guideCategory, setGuideCategory] = useState<Category | null>(null);
+
+  useEffect(() => {
+    if (view !== "guide" || !token) return;
+    let cancelled = false;
+    request<Category[]>("/admin/categories", token)
+      .then(categories => { if (!cancelled) setGuideCategory(categories[0] || null); })
+      .catch(() => { if (!cancelled) setGuideCategory(null); });
+    return () => { cancelled = true; };
+  }, [view, token]);
 
   const savePreferences = useCallback(async (next: PanelPreferences) => {
     setPreferencesError("");
@@ -83,9 +97,31 @@ export default function App() {
       />
     );
   const go = (v: View) => {
+    setTourStep(null);
     setView(v);
     if (v !== "manage") setSelected(null);
   };
+  const steps = guideSteps(Boolean(guideCategory));
+  async function startTour() {
+    try {
+      const categories = await request<Category[]>("/admin/categories", token!);
+      setGuideCategory(categories[0] || null);
+    } catch { setGuideCategory(null); }
+    setView("dashboard");
+    setTourStep(0);
+  }
+  function moveTour(index: number) {
+    const nextSteps = guideSteps(Boolean(guideCategory));
+    if (index >= nextSteps.length) { setTourStep(null); go("guide"); return; }
+    if (index < 0) return;
+    if (nextSteps[index].view === "manage" && guideCategory) setSelected(guideCategory);
+    setView(nextSteps[index].view);
+    setTourStep(index);
+  }
+  function openGuideChapter(next: View) {
+    if (next === "manage" && guideCategory) setSelected(guideCategory);
+    setView(next);
+  }
   return (
     <Layout
       view={view}
@@ -131,6 +167,8 @@ export default function App() {
         <Schema token={token} />
       ) : view === "appearance" ? (
         <Appearance preferences={preferences} onSave={savePreferences} />
+      ) : view === "guide" ? (
+        <Guide onStart={() => void startTour()} onOpen={openGuideChapter} hasCategory={Boolean(guideCategory)} />
       ) : (
         selected && (
           <CategoryEditor
@@ -140,6 +178,7 @@ export default function App() {
           />
         )
       )}
+      {tourStep !== null && steps[tourStep] && <GuideTour step={steps[tourStep]} index={tourStep} total={steps.length} onPrevious={() => moveTour(tourStep - 1)} onNext={() => moveTour(tourStep + 1)} onClose={() => setTourStep(null)} />}
     </Layout>
   );
 }
