@@ -1,7 +1,7 @@
 import { addForeignKey, columnName, ensurePhysicalTable, identifier, initDatabase, pool, sqlType, tableName, withTransaction, type CategoryFolderRow, type CategoryRow, type ColumnRow } from "./database.js";
 
-export type FieldType = "text" | "number" | "boolean" | "date" | "relation" | "image";
-const fieldTypes = new Set<FieldType>(["text", "number", "boolean", "date", "relation", "image"]);
+export type FieldType = "text" | "number" | "integer" | "float" | "boolean" | "boolean_text" | "date" | "relation" | "image";
+const fieldTypes = new Set<FieldType>(["text", "number", "integer", "float", "boolean", "boolean_text", "date", "relation", "image"]);
 const categoryIcons = new Set([
   "code", "home", "briefcase", "pulse", "pay", "chart", "sliders", "gear",
   "book", "boxes", "building", "calendar", "cloud", "data", "document",
@@ -218,7 +218,22 @@ function dataValue(value: unknown, fieldType: string) {
     if (!/^-?(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/.test(number)) throw new InputError("Sayı en fazla 14 tam ve 6 ondalık basamak içermeli");
     return number;
   }
-  if (fieldType === "boolean") return value === true || value === "true" || value === "1" || value === 1 ? 1 : 0;
+  if (fieldType === "integer") {
+    const integer = String(value).trim();
+    if (!/^-?(?:0|[1-9]\d{0,9})$/.test(integer) || BigInt(integer) < -2147483648n || BigInt(integer) > 2147483647n) throw new InputError("Tamsayı -2147483648 ile 2147483647 arasında olmalı");
+    return Number(integer);
+  }
+  if (fieldType === "float") {
+    const input = String(value).trim().replace(",", ".");
+    if (!/^-?(?:0|[1-9]\d{0,14})(?:\.\d+)?(?:[eE][+-]?\d{1,3})?$/.test(input) || !Number.isFinite(Number(input))) throw new InputError("Geçerli bir ondalıklı sayı girin");
+    return Number(input);
+  }
+  if (fieldType === "boolean" || fieldType === "boolean_text") {
+    const raw = String(value);
+    if (!["true", "false", "1", "0"].includes(raw)) throw new InputError("Boolean değeri geçersiz");
+    const enabled = raw === "true" || raw === "1";
+    return fieldType === "boolean_text" ? String(enabled) : Number(enabled);
+  }
   if (fieldType === "date") {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw new InputError("Tarih YYYY-AA-GG biçiminde olmalı");
     return String(value);
@@ -359,8 +374,12 @@ export async function publicData(category: CategoryRow, baseUrl = "") {
     id: Number(row.id),
     ...Object.fromEntries(fields.map(field => {
       const value = row.data[String(field.id)] ?? null;
-      return [field.name, field.field_type === "image" && typeof value === "string" && value.startsWith("/uploads/")
-        ? `${baseUrl}${value}` : value];
+      if (value === null || value === "") return [field.name,
+        ["integer", "float", "boolean_text"].includes(field.field_type) ? null : value];
+      if (field.field_type === "image" && typeof value === "string" && value.startsWith("/uploads/")) return [field.name, `${baseUrl}${value}`];
+      if (field.field_type === "integer" || field.field_type === "float" || field.field_type === "boolean") return [field.name, Number(value)];
+      if (field.field_type === "boolean_text") return [field.name, value === "true"];
+      return [field.name, value];
     })),
   }));
 }

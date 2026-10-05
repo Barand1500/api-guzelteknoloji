@@ -91,6 +91,8 @@ API yanıtları yüklenen görselleri tam URL olarak döndürür. Alan adını s
 
 Satırlar artık otomatik `id` sırasıyla okunur. Başlangıç migrasyonu etkin kategori tablolarındaki `gtk_sort_order` sütununu kaldırır; kayıtları ve ID'leri korur. Eski JSON geçiş yedekleri otomatik silinmez. Deploy öncesinde MySQL yedeği alın.
 
+Yeni sütun türlerinde `Tamsayı (INT)` MySQL `INT`, `Ondalıklı sayı (FLOAT)` MySQL `DOUBLE`, `Boolean (1 / 0)` MySQL `TINYINT(1)` ve `Boolean (true / false)` MySQL `VARCHAR(5)` kullanır. Dış API yeni sayı türlerini JSON sayı, iki Boolean türünü sırasıyla JSON sayı ve JSON Boolean olarak döndürür. Önceden oluşturulmuş `number` sütunları `DECIMAL(20,6)` olarak kalır; verileri dönüştürülmez. Otomatik ID ve tarih alanlarının görünürlüğü yalnız panelde, tarayıcı bazında saklanır; tablo şemasını veya API yanıtını değiştirmez.
+
 ## Git ile deploy
 
 Sunucuda proje bir kez klonlandıktan sonra:

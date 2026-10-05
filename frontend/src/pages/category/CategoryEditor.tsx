@@ -4,6 +4,7 @@ import {
   Check,
   Columns3,
   Database,
+  Eye,
   ImagePlus,
   Link2,
   Plus,
@@ -14,14 +15,13 @@ import {
 } from "lucide-react";
 import { request } from "../../shared/api";
 import type { Category, Column, Schema } from "../../shared/types";
+import FieldTypePicker, { fieldTypeLabels } from "./FieldTypePicker";
 
-const types: { value: Column["fieldType"]; label: string }[] = [
-  { value: "text", label: "Metin" },
-  { value: "number", label: "Sayı" },
-  { value: "boolean", label: "Evet / Hayır" },
-  { value: "date", label: "Tarih" },
-  { value: "relation", label: "Bağlamsal anahtar" },
-  { value: "image", label: "Görsel" },
+type SystemColumn = "id" | "created_at" | "updated_at";
+const systemColumns: { key: SystemColumn; label: string }[] = [
+  { key: "id", label: "ID" },
+  { key: "created_at", label: "Oluşturulma tarihi" },
+  { key: "updated_at", label: "Güncellenme tarihi" },
 ];
 const dateLabel = (value?: string) =>
   value ? new Date(value).toLocaleString("tr-TR") : "Kaydedilince oluşur";
@@ -53,11 +53,26 @@ export default function CategoryEditor({
   const [pendingImages, setPendingImages] = useState(0);
   const [rowPage, setRowPage] = useState(1);
   const [rowPageSize, setRowPageSize] = useState(25);
+  const [visibleSystemColumns, setVisibleSystemColumns] = useState<Set<SystemColumn>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`category-system-columns-${category.id}`) || '["id"]');
+      return new Set(Array.isArray(saved) ? saved.filter((key): key is SystemColumn => systemColumns.some(column => column.key === key)) : ["id"]);
+    } catch { return new Set<SystemColumn>(["id"]); }
+  });
   const [selectedRows, setSelectedRows] = useState<Set<string>>(
     () => new Set(),
   );
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const nextDraftId = useRef(-1);
+
+  function toggleSystemColumn(key: SystemColumn) {
+    setVisibleSystemColumns(current => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem(`category-system-columns-${category.id}`, JSON.stringify([...next]));
+      return next;
+    });
+  }
 
   const load = useCallback(async () => {
     const [data, available] = await Promise.all([
@@ -314,7 +329,7 @@ export default function CategoryEditor({
               <div>
                 <strong>{column.name}</strong>
                 <small>
-                  {types.find((type) => type.value === column.fieldType)?.label}
+                  {fieldTypeLabels[column.fieldType]}
                   {column.referenceCategoryId
                     ? ` · ${categories.find((item) => item.id === column.referenceCategoryId)?.name || "Kategori"}`
                     : ""}
@@ -350,19 +365,7 @@ export default function CategoryEditor({
             placeholder="Yeni sütun adı"
             aria-label="Yeni sütun adı"
           />
-          <select
-            value={fieldType}
-            onChange={(event) =>
-              setFieldType(event.target.value as Column["fieldType"])
-            }
-            aria-label="Sütun türü"
-          >
-            {types.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
+          <FieldTypePicker value={fieldType} onChange={setFieldType} />
           {fieldType === "relation" && (
             <select
               value={referenceCategoryId}
@@ -432,6 +435,13 @@ export default function CategoryEditor({
             <option value="active">Aktif</option>
             <option value="inactive">Pasif</option>
           </select>
+          <details className="editor-system-visibility">
+            <summary><Eye size={16} /> Otomatik alanlar</summary>
+            <div>{systemColumns.map(column => <label key={column.key}>
+              <input type="checkbox" checked={visibleSystemColumns.has(column.key)} onChange={() => toggleSystemColumn(column.key)} />
+              {column.label}
+            </label>)}</div>
+          </details>
           <select
             value={rowPageSize}
             onChange={(event) => {
@@ -472,22 +482,17 @@ export default function CategoryEditor({
                     aria-label="Bu sayfadaki tüm satırları seç"
                   />
                 </th>
-                <th>
-                  id <span>otomatik</span>
-                </th>
+                {visibleSystemColumns.has("id") && <th>id <span>otomatik</span></th>}
                 {schema.columns.map((column) => (
                   <th key={column.id}>
                     {column.name}
                     <small>
-                      {
-                        types.find((type) => type.value === column.fieldType)
-                          ?.label
-                      }
+                      {fieldTypeLabels[column.fieldType]}
                     </small>
                   </th>
                 ))}
-                <th>created_at</th>
-                <th>updated_at</th>
+                {visibleSystemColumns.has("created_at") && <th>created_at</th>}
+                {visibleSystemColumns.has("updated_at") && <th>updated_at</th>}
                 <th>Durum</th>
                 <th aria-label="İşlemler" />
               </tr>
@@ -511,11 +516,11 @@ export default function CategoryEditor({
                         aria-label={`${row.id} satırını seç`}
                       />
                     </td>
-                    <td>
+                    {visibleSystemColumns.has("id") && <td>
                       <code className="editor-readonly-id" title={row.id}>
                         {row.id.startsWith("draft-") ? "Otomatik" : row.id}
                       </code>
-                    </td>
+                    </td>}
                     {schema.columns.map((column) => (
                       <td key={column.id}>
                         <CellInput
@@ -531,8 +536,8 @@ export default function CategoryEditor({
                         />
                       </td>
                     ))}
-                    <td className="editor-date">{dateLabel(row.createdAt)}</td>
-                    <td className="editor-date">{dateLabel(row.updatedAt)}</td>
+                    {visibleSystemColumns.has("created_at") && <td className="editor-date">{dateLabel(row.createdAt)}</td>}
+                    {visibleSystemColumns.has("updated_at") && <td className="editor-date">{dateLabel(row.updatedAt)}</td>}
                     <td>
                       <button
                         className={`editor-row-toggle ${row.active ? "on" : ""}`}
@@ -730,7 +735,7 @@ function CellInput({
     return <RelationPicker value={value} label={column.name} options={options} onChange={onChange} />;
   if (column.fieldType === "image")
     return <ImageCell value={value} label={column.name} onChange={onChange} onImage={onImage} />;
-  if (column.fieldType === "boolean")
+  if (column.fieldType === "boolean" || column.fieldType === "boolean_text")
     return (
       <select
         value={value}
@@ -738,14 +743,14 @@ function CellInput({
         aria-label={column.name}
       >
         <option value="">Boş</option>
-        <option value="1">Evet</option>
-        <option value="0">Hayır</option>
+        <option value={column.fieldType === "boolean_text" ? "true" : "1"}>{column.fieldType === "boolean_text" ? "true" : "1"}</option>
+        <option value={column.fieldType === "boolean_text" ? "false" : "0"}>{column.fieldType === "boolean_text" ? "false" : "0"}</option>
       </select>
     );
   return (
     <input
       type={column.fieldType === "date" ? "date" : "text"}
-      inputMode={column.fieldType === "number" ? "decimal" : undefined}
+      inputMode={column.fieldType === "number" || column.fieldType === "float" ? "decimal" : column.fieldType === "integer" ? "numeric" : undefined}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       aria-label={column.name}
