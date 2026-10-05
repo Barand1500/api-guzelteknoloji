@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { apiKeyForCategory, categoryBySlug, InputError, publicData } from "./categories.js";
 import { initDatabase, pool } from "./database.js";
 import { folderBundle, recordFolderUsage } from "./folderBundles.js";
+import { recordKeyUsage } from "./keyQuota.js";
 
 export const publicRoutes = Router();
 const publicBaseUrl = (request: Request) => String(process.env.PUBLIC_BASE_URL || `${request.protocol}://${request.get("host")}`).replace(/\/$/, "");
@@ -37,10 +38,9 @@ async function serveCategory(request: Request, response: Response) {
   }
   const key = await apiKeyForCategory(apiKey, category.id);
   if (!key) throw new InputError("Bu API için geçerli bir X-API-Key gerekli", 401);
-  await pool.query("INSERT INTO api_usage_logs(api_key_id,category_id,origin_host) VALUES(?,?,?)", [
-    key.id, category.id, String(request.headers.origin || request.headers.referer || request.headers.host || "").slice(0, 255),
-  ]);
-  response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data: await publicData(category, publicBaseUrl(request)) });
+  const data = await publicData(category, publicBaseUrl(request));
+  await recordKeyUsage(key.id, { categoryId: category.id }, String(request.headers.origin || request.headers.referer || request.headers.host || ""));
+  response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data });
 }
 
 publicRoutes.get("/health", async (_request, response) => {

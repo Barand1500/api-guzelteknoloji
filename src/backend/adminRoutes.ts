@@ -6,6 +6,7 @@ import { initDatabase, pool, withTransaction } from "./database.js";
 import { databaseSchema, databaseTableRows } from "./schemaExplorer.js";
 import { folderBundle, recordFolderUsage } from "./folderBundles.js";
 import { saveImage } from "./uploads.js";
+import { quotaLimit, recordKeyUsage } from "./keyQuota.js";
 
 export const adminRoutes = Router();
 adminRoutes.use("/admin", requireAuth);
@@ -113,6 +114,9 @@ adminRoutes.delete("/admin/categories/:categoryId/columns/:columnId", async (req
 adminRoutes.get("/admin/api-keys", async (_request, response) => {
   await initDatabase();
   const [rows] = await pool.query<any[]>(`SELECT k.id,k.project_name projectName,k.api_key apiKey,k.active,k.created_at createdAt,
+    k.minute_limit minuteLimit,k.month_limit monthLimit,
+    (SELECT COUNT(*) FROM api_usage_logs minute_log WHERE minute_log.api_key_id=k.id AND minute_log.created_at >= DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00')) minuteUsed,
+    (SELECT COUNT(*) FROM api_usage_logs month_log WHERE month_log.api_key_id=k.id AND month_log.created_at >= DATE_FORMAT(NOW(),'%Y-%m-01 00:00:00')) monthUsed,
     COUNT(DISTINCT l.id) usageCount,COUNT(DISTINCT NULLIF(l.origin_host,'')) siteCount,
     GROUP_CONCAT(DISTINCT c.name SEPARATOR '||') categoryNames,GROUP_CONCAT(DISTINCT c.id) categoryIds,
     GROUP_CONCAT(DISTINCT f.name SEPARATOR '||') folderNames
@@ -122,6 +126,8 @@ adminRoutes.get("/admin/api-keys", async (_request, response) => {
     GROUP BY k.id ORDER BY k.created_at DESC`);
   response.json({ success: true, data: rows.map(row => ({
     ...row, active: Boolean(row.active), usageCount: Number(row.usageCount), siteCount: Number(row.siteCount),
+    minuteLimit: row.minuteLimit === null ? null : Number(row.minuteLimit), monthLimit: row.monthLimit === null ? null : Number(row.monthLimit),
+    minuteUsed: Number(row.minuteUsed), monthUsed: Number(row.monthUsed),
     categoryNames: row.categoryNames ? String(row.categoryNames).split("||") : [],
     categoryIds: row.categoryIds ? String(row.categoryIds).split(",").map(Number) : [],
     folderNames: row.folderNames ? String(row.folderNames).split("||") : [],
@@ -202,7 +208,7 @@ adminRoutes.post("/admin/playground/:categoryId", async (request, response) => {
     const baseUrl = String(process.env.PUBLIC_BASE_URL || `${request.protocol}://${request.get("host")}`).replace(/\/$/, "");
     const data = await publicData(category, baseUrl);
     const durationMs = Math.round(performance.now() - started);
-    await pool.query("INSERT INTO api_usage_logs(api_key_id,category_id,origin_host) VALUES(?,?,?)", [key.id, categoryId, "admin-playground"]);
+    await recordKeyUsage(key.id, { categoryId }, "admin-playground");
     response.json({ success: true, data: { status: 200, durationMs, endpoint: `/v1/${category.slug}`, response: { success: true, category: { id: category.id, name: category.name, slug: category.slug }, data } } });
   });
 
@@ -249,6 +255,8 @@ adminRoutes.post("/admin/api-keys/:id/rotate", async (request, response) => {
 adminRoutes.post("/admin/api-keys", async (request, response) => {
   await initDatabase();
   const projectName = String(request.body?.projectName || "").trim();
+  const minuteLimit = quotaLimit(request.body?.minuteLimit);
+  const monthLimit = quotaLimit(request.body?.monthLimit);
   const categoryIds = Array.isArray(request.body?.categoryIds) ? [...new Set(request.body.categoryIds.map(Number))] as number[] : [];
   const folderIds = Array.isArray(request.body?.folderIds) ? [...new Set(request.body.folderIds.map(Number))] as number[] : [];
   if (!projectName || (!categoryIds.length && !folderIds.length) ||
@@ -260,15 +268,25 @@ adminRoutes.post("/admin/api-keys", async (request, response) => {
   }
   const item = { id: randomUUID(), projectName, apiKey: `gtk_${randomUUID().replace(/-/g, "")}`, active: true };
   await withTransaction(async connection => {
-    await connection.query("INSERT INTO api_keys(id,project_name,api_key,active) VALUES(?,?,?,1)", [item.id, item.projectName, item.apiKey]);
+    await connection.query("INSERT INTO api_keys(id,project_name,api_key,active,minute_limit,month_limit) VALUES(?,?,?,1,?,?)", [item.id, item.projectName, item.apiKey, minuteLimit, monthLimit]);
     for (const id of categoryIds) await connection.query("INSERT INTO api_key_categories(api_key_id,category_id) VALUES(?,?)", [item.id, id]);
     for (const id of folderIds) await connection.query("INSERT INTO api_key_folders(api_key_id,folder_id) VALUES(?,?)", [item.id, id]);
   });
   response.status(201).json({ success: true, data: item });
 });
 adminRoutes.patch("/admin/api-keys/:id", async (request, response) => {
-  if (typeof request.body?.active !== "boolean") throw new InputError("Anahtar durumu geçersiz");
-  await pool.query("UPDATE api_keys SET active=? WHERE id=?", [request.body.active ? 1 : 0, request.params.id]);
+  const updates: string[] = [];
+  const values: (number | null | string)[] = [];
+  if (request.body?.active !== undefined) {
+    if (typeof request.body.active !== "boolean") throw new InputError("Anahtar durumu geçersiz");
+    updates.push("active=?"); values.push(request.body.active ? 1 : 0);
+  }
+  for (const [field, column] of [["minuteLimit", "minute_limit"], ["monthLimit", "month_limit"]] as const) {
+    if (Object.prototype.hasOwnProperty.call(request.body || {}, field)) { updates.push(`${column}=?`); values.push(quotaLimit(request.body[field])); }
+  }
+  if (!updates.length) throw new InputError("Güncellenecek alan seçin");
+  const [result] = await pool.query<any>(`UPDATE api_keys SET ${updates.join(",")} WHERE id=?`, [...values, request.params.id]);
+  if (!result.affectedRows) throw new InputError("API anahtarı bulunamadı", 404);
   response.json({ success: true });
 });
 adminRoutes.delete("/admin/api-keys/:id", async (request, response) => { await pool.query("DELETE FROM api_keys WHERE id=?", [request.params.id]); response.json({ success: true }); });

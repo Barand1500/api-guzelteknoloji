@@ -13,6 +13,10 @@ export type ApiKey = {
   apiKey: string;
   active: boolean;
   usageCount: number;
+  minuteLimit: number | null;
+  monthLimit: number | null;
+  minuteUsed: number;
+  monthUsed: number;
   siteCount: number;
   categoryNames: string[];
   categoryIds: number[];

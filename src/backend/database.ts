@@ -125,6 +125,7 @@ async function createMetadata() {
   await pool.query(`CREATE TABLE IF NOT EXISTS api_keys (
     id CHAR(36) PRIMARY KEY, project_name VARCHAR(160) NOT NULL,
     api_key VARCHAR(96) NOT NULL UNIQUE, active TINYINT(1) NOT NULL DEFAULT 1,
+    minute_limit INT UNSIGNED NULL, month_limit INT UNSIGNED NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_key_categories (
@@ -144,7 +145,7 @@ async function createMetadata() {
     id BIGINT AUTO_INCREMENT PRIMARY KEY, api_key_id CHAR(36) NOT NULL,
     category_id INT NULL, folder_id INT NULL, origin_host VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_usage_key (api_key_id), INDEX idx_usage_category (category_id),
+    INDEX idx_usage_key (api_key_id), INDEX idx_usage_key_time (api_key_id,created_at), INDEX idx_usage_category (category_id),
     CONSTRAINT fk_usage_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
     CONSTRAINT fk_usage_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE SET NULL
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
@@ -176,6 +177,10 @@ async function createMetadata() {
   if (!folderConstraint.length) await pool.query("ALTER TABLE api_categories ADD CONSTRAINT fk_api_category_folder FOREIGN KEY (folder_id) REFERENCES api_category_folders(id) ON DELETE SET NULL");
   await addMetadataColumn("api_panel_preferences", "font_family", "VARCHAR(32) NOT NULL DEFAULT 'inter'");
   await addMetadataColumn("api_usage_logs", "folder_id", "INT NULL");
+  await addMetadataColumn("api_keys", "minute_limit", "INT UNSIGNED NULL");
+  await addMetadataColumn("api_keys", "month_limit", "INT UNSIGNED NULL");
+  const [quotaIndex] = await pool.query<any[]>("SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='api_usage_logs' AND INDEX_NAME='idx_usage_key_time' LIMIT 1");
+  if (!quotaIndex.length) await pool.query("ALTER TABLE api_usage_logs ADD INDEX idx_usage_key_time (api_key_id,created_at)");
   const [usageFolderConstraint] = await pool.query<any[]>(
     "SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='api_usage_logs' AND CONSTRAINT_NAME='fk_usage_folder' LIMIT 1",
   );

@@ -1,6 +1,7 @@
 import type { RowDataPacket } from "mysql2";
 import { InputError, publicData } from "./categories.js";
 import { initDatabase, pool, type CategoryFolderRow, type CategoryRow } from "./database.js";
+import { recordKeyUsage } from "./keyQuota.js";
 
 interface BundleFolderRow extends CategoryFolderRow { parent_id: number | null }
 
@@ -62,8 +63,5 @@ export async function folderBundle(folderId: number, apiKey: string, baseUrl = "
 }
 
 export async function recordFolderUsage(keyId: string, folderId: number, originHost: string) {
-  await pool.query(
-    "INSERT INTO api_usage_logs(api_key_id,folder_id,origin_host) VALUES(?,?,?)",
-    [keyId, folderId, originHost.slice(0, 255)],
-  );
+  await recordKeyUsage(keyId, { folderId }, originHost);
 }

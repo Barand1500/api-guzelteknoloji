@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { authRoutes } from "./auth.js";
 import { adminRoutes } from "./adminRoutes.js";
 import { InputError } from "./categories.js";
+import { QuotaError } from "./keyQuota.js";
 import { initDatabase } from "./database.js";
 import { publicRoutes } from "./publicRoutes.js";
 import { searchRoutes } from "./search.js";
@@ -25,6 +26,7 @@ app.use(authRoutes, adminRoutes, searchRoutes, publicRoutes);
 app.get(/^(?!\/api|\/admin|\/auth|\/uploads).*/, (_request, response) => response.sendFile(path.join(publicDir, "index.html")));
 
 const errors: ErrorRequestHandler = (error, _request, response, _next) => {
+  if (error instanceof QuotaError) return void response.status(429).set("Retry-After", String(error.retryAfter)).json({ success: false, code: "QUOTA_EXCEEDED", scope: error.scope, retryAfter: error.retryAfter, message: error.message });
   if (error instanceof InputError) return void response.status(error.status).json({ success: false, message: error.message });
   if (error?.code === "ER_DUP_ENTRY") return void response.status(409).json({ success: false, message: "Bu ad veya kayıt zaten kullanılıyor" });
   if (error?.code === "ER_NO_REFERENCED_ROW_2") return void response.status(400).json({ success: false, message: "İlişkili kayıt bulunamadı" });
