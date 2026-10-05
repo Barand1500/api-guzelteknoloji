@@ -1,6 +1,6 @@
 import gsap from "gsap";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, Check, Clock3, Code2, Copy, FlaskConical, LoaderCircle, Play, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertCircle, Check, Clock3, Code2, Copy, Eye, EyeOff, FlaskConical, LoaderCircle, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { request } from "../../shared/api";
 import type { Category, CategoryFolder } from "../../shared/types";
 import { Loading } from "../../shared/ui";
@@ -17,6 +17,7 @@ export default function ApiPlayground({ token }: { token: string }) {
   const [categoriesError, setCategoriesError] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -115,14 +116,14 @@ export default function ApiPlayground({ token }: { token: string }) {
         <div className="playground-card-title"><span><Code2 size={18} /></span><div><h2>İstek ayarları</h2><p>İstek sunucuda doğrulanır; API anahtarı tarayıcı adresine eklenmez.</p></div></div>
         <div className="playground-target-switch" role="group" aria-label="API kapsamı"><button type="button" className={targetType === "category" ? "active" : ""} disabled={!categories.some(item => item.active)} onClick={() => { setTargetType("category"); setResult(null); }}>Tek kategori</button><button type="button" className={targetType === "folder" ? "active" : ""} disabled={!folders.length} onClick={() => { setTargetType("folder"); setResult(null); }}>Klasör paketi</button></div>
         {targetType === "folder" ? <label className="playground-field">Klasör<select value={folderId} onChange={event => { setFolderId(event.target.value); setResult(null); }} disabled={!folders.length}><option value="">Klasör seçin</option>{folders.map(item => <option key={item.id} value={item.id}>{folderPath(item)}</option>)}</select></label> : <label className="playground-field">Kategori<select value={categoryId} onChange={event => { setCategoryId(event.target.value); setResult(null); }} disabled={!categories.length}><option value="">Kategori seçin</option>{categories.map(item => <option key={item.id} value={item.id} disabled={!item.active}>{item.folderPath ? `${item.folderPath} / ` : ""}{item.name}{item.active ? "" : " (API kapalı)"}</option>)}</select></label>}
-        <label className="playground-field">X-API-Key<input type="password" autoComplete="off" spellCheck={false} value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder="gtk_..." /></label>
+        <label className="playground-field">API anahtarı<div className="playground-key-field"><input type={showKey ? "text" : "password"} autoComplete="off" spellCheck={false} value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder="gtk_..." /><button type="button" onClick={() => setShowKey(value => !value)} aria-label={showKey ? "API anahtarını gizle" : "API anahtarını göster"}>{showKey ? <EyeOff size={19} /> : <Eye size={19} />}</button></div></label>
         <div className="playground-endpoint"><span>GET</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard.writeText(endpoint)} title="Endpoint adresini kopyala"><Copy size={15} /></button></div>
         <button className="playground-run" type="button" disabled={busy || (targetType === "folder" ? !selectedFolder : !selected?.active)} onClick={() => void runTest()}>{busy ? <LoaderCircle size={16} className="playground-spinner" /> : <Play size={16} />}{busy ? "İstek gönderiliyor..." : "API isteğini çalıştır"}</button>
         <div className="playground-security"><ShieldCheck size={16} /><span>Anahtar yalnızca test isteği sırasında kullanılır ve bu ekranda saklanmaz.</span></div>
       </section>
       <section className="playground-card playground-response" data-playground-card>
         <div className="playground-response-head"><div className="playground-card-title"><span><Code2 size={18} /></span><div><h2>Yanıt</h2><p>Yanıt gövdesi</p></div></div>{result && <div className="playground-response-meta"><span className="playground-ok"><Check size={14} /> HTTP {result.status}</span><span><Clock3 size={14} /> {result.durationMs} ms</span><button type="button" onClick={() => void copyResponse()} aria-label="JSON yanıtını kopyala">{copied ? <Check size={15} /> : <Copy size={15} />}</button></div>}</div>
-        <pre className="playground-json">{result ? JSON.stringify(result.response, null, 2) : busy ? "API yanıtı bekleniyor…" : "İstek sonucundaki JSON burada görüntülenecek."}</pre>
+        {result ? <pre className="playground-json">{JSON.stringify(result.response, null, 2)}</pre> : <div className="playground-placeholder" role="status">{busy ? <LoaderCircle size={30} className="playground-spinner" /> : <FlaskConical size={32} />}<strong>{busy ? "Yanıt bekleniyor" : "Sonuç burada görünecek"}</strong><span>{busy ? "İstek sunucuya gönderildi." : "Bir kaynak seçip isteği çalıştırın."}</span></div>}
       </section>
     </div>
   </div>;

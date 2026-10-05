@@ -1,33 +1,53 @@
-.playground-page { width:100%; color:#182033; }
-.playground-heading { margin-bottom:21px; }
-.playground-kicker { display:inline-flex; align-items:center; gap:6px; color:#1f6fd8; font-size:10px; font-weight:850; letter-spacing:.11em; }
-.playground-heading h1 { margin:7px 0 4px; font-size:29px; letter-spacing:-.035em; }
-.playground-heading p { margin:0; color:#718096; font-size:13px; line-height:1.55; }
-.playground-layout { display:grid; grid-template-columns:minmax(280px,.85fr) minmax(0,1.15fr); gap:13px; }
-.playground-card { min-width:0; overflow:hidden; border:1px solid #e1e8f0; border-radius:15px; background:#fff; box-shadow:0 8px 24px #25375308; }
-.playground-request { padding:18px; }
-.playground-card-title { display:flex; align-items:center; gap:10px; }
-.playground-card-title>span { width:34px; height:34px; display:grid; place-items:center; border-radius:9px; background:#eaf2ff; color:#1f6fd8; }
-.playground-card-title h2 { margin:0 0 3px; font-size:14px; }.playground-card-title p { margin:0; color:#8491a2; font-size:10px; line-height:1.4; }
-.playground-target-switch { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-top:19px; padding:4px; border-radius:10px; background:#edf2f8; }
-.playground-target-switch button { min-height:36px; border:0; border-radius:8px; background:transparent; color:#657991; font:inherit; font-size:12px; font-weight:700; }
-.playground-target-switch button.active { background:#fff; color:#176ac8; box-shadow:0 2px 7px #193b6417; }
+.playground-page { width:100%; color:#14213a; }
+.playground-heading { margin-bottom:26px; }
+.playground-kicker { display:inline-flex; align-items:center; gap:8px; color:#1769d2; font-size:13px; font-weight:800; letter-spacing:.07em; }
+.playground-heading h1 { margin:8px 0 0; font-size:clamp(30px,3vw,38px); line-height:1.15; letter-spacing:-.04em; }
+.playground-layout { display:grid; grid-template-columns:minmax(350px,.8fr) minmax(0,1.2fr); align-items:stretch; gap:20px; }
+.playground-card { min-width:0; overflow:hidden; border:1px solid #dce5f0; border-radius:20px; background:#fff; box-shadow:0 12px 36px #1f3c6409; }
+.playground-request { display:flex; flex-direction:column; padding:26px; }
+.playground-card-title { display:flex; align-items:center; gap:14px; }
+.playground-card-title>span { width:46px; height:46px; display:grid; flex:none; place-items:center; border-radius:13px; background:#e8f1ff; color:#1769d2; }
+.playground-card-title h2 { margin:0; font-size:21px; line-height:1.25; letter-spacing:-.025em; }
+.playground-card-title p { margin:4px 0 0; color:#62718a; font-size:14px; line-height:1.4; }
+.playground-target-switch { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:26px; padding:5px; border:1px solid #e2e9f2; border-radius:12px; background:#f2f6fb; }
+.playground-target-switch button { min-height:44px; padding:0 8px; border:0; border-radius:9px; background:transparent; color:#65748b; font:inherit; font-size:14px; font-weight:700; cursor:pointer; transition:background .18s,color .18s,box-shadow .18s; }
+.playground-target-switch button.active { background:#fff; color:#1769d2; box-shadow:0 3px 10px #1f3c641b; }
 .playground-target-switch button:disabled { opacity:.45; cursor:not-allowed; }
-.playground-field { display:grid; gap:6px; margin-top:18px; color:#56657a; font-size:10px; font-weight:750; }
-.playground-field input,.playground-field select { width:100%; height:39px; padding:0 11px; border:1px solid #dfe7f0; border-radius:8px; outline:0; background:#fff; color:#28374b; font:inherit; font-size:11px; }
-.playground-field input:focus,.playground-field select:focus { border-color:#8cb7ee; box-shadow:0 0 0 3px #2f80ed14; }
-.playground-endpoint { min-width:0; display:flex; align-items:center; gap:8px; margin-top:16px; padding:10px; border:1px solid #e6edf5; border-radius:9px; background:#f8fafd; }
-.playground-endpoint>span { padding:4px 6px; border-radius:5px; background:#e4f7ed; color:#168558; font-size:9px; font-weight:850; }.playground-endpoint code { flex:1; overflow:hidden; color:#335c8c; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }.playground-endpoint button { width:27px; height:27px; display:grid; place-items:center; border:0; border-radius:6px; background:#fff; color:#6c7b8f; }
-.playground-run { width:100%; min-height:40px; display:flex; align-items:center; justify-content:center; gap:7px; margin-top:13px; border:0; border-radius:9px; background:#1f6fd8; color:#fff; font-size:11px; font-weight:800; }.playground-run:disabled { opacity:.5; cursor:not-allowed; }
-.playground-security { display:flex; align-items:flex-start; gap:7px; margin-top:14px; color:#728297; font-size:10px; line-height:1.5; }.playground-security svg { flex:none; color:#18845c; }
-.playground-response { min-height:390px; display:flex; flex-direction:column; background:#0e1724; border-color:#1b2a3c; }
-.playground-response-head { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:14px 17px; border-bottom:1px solid #263548; }.playground-response .playground-card-title h2 { color:#eaf1fa; }.playground-response .playground-card-title p { color:#8899ad; }.playground-response .playground-card-title>span { background:#1b2d45; color:#80b9f7; }
-.playground-response-meta { display:flex; align-items:center; gap:10px; color:#9eacbc; font-size:10px; }.playground-response-meta>span { display:flex; align-items:center; gap:4px; }.playground-response-meta .playground-ok { color:#6dd7a7; }.playground-response-meta button { width:29px; height:29px; display:grid; place-items:center; border:1px solid #31445b; border-radius:7px; background:#182538; color:#b9c7d7; }
-.playground-json { flex:1; min-height:310px; max-height:65vh; overflow:auto; margin:0; padding:17px; color:#b8c8dc; font:11px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
-.playground-error { display:flex; align-items:center; gap:8px; margin:0 0 12px; padding:10px 13px; border:1px solid #f1c7cd; border-radius:9px; background:#fff4f5; color:#bd354b; font-size:12px; }
-.playground-error button { display:inline-flex; align-items:center; gap:5px; margin-left:auto; padding:6px 9px; border:1px solid #e5b8bf; border-radius:7px; background:#fff; color:#9c3041; font:inherit; }
-.playground-empty { display:flex; align-items:flex-start; gap:10px; margin-bottom:14px; padding:13px 15px; border:1px solid #ead8ae; border-radius:10px; background:#fffaf0; color:#946b1c; }
-.playground-empty>div { display:grid; gap:3px; }.playground-empty strong { font-size:12px; }.playground-empty span { color:#887958; font-size:11px; }
+.playground-field { display:grid; gap:9px; min-width:0; margin-top:23px; color:#30405a; font-size:14px; font-weight:700; }
+.playground-field>select,.playground-key-field { width:100%; min-height:50px; border:1px solid #d4e0ed; border-radius:11px; background:#fff; color:#17263e; font:inherit; font-size:15px; }
+.playground-field>select { padding:0 14px; cursor:pointer; }
+.playground-key-field { display:flex; align-items:center; padding-right:8px; }
+.playground-key-field input { flex:1; min-width:0; height:48px; padding:0 14px; border:0; outline:0; background:transparent; color:#17263e; font:inherit; font-size:15px; }
+.playground-key-field button,.playground-endpoint button { display:grid; flex:none; place-items:center; width:35px; height:35px; border:0; border-radius:8px; background:transparent; color:#687b95; cursor:pointer; }
+.playground-key-field button:hover,.playground-endpoint button:hover { background:#eaf2fc; color:#1769d2; }
+.playground-field>select:focus,.playground-key-field:focus-within { outline:0; border-color:#72a8ed; box-shadow:0 0 0 4px #2778da1a; }
+.playground-endpoint { min-width:0; display:flex; align-items:center; gap:11px; min-height:54px; margin-top:23px; padding:6px 8px 6px 12px; border:1px solid #dce5ef; border-radius:11px; background:#f8fafd; }
+.playground-endpoint>span { padding:6px 8px; border-radius:6px; background:#e5f8ee; color:#0d8d58; font-size:12px; font-weight:850; }
+.playground-endpoint code { flex:1; min-width:0; overflow-wrap:anywhere; color:#25517f; font-size:14px; line-height:1.45; }
+.playground-run { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; min-height:52px; margin-top:23px; border:0; border-radius:11px; background:#1f70dc; color:#fff; font:inherit; font-size:16px; font-weight:750; cursor:pointer; box-shadow:0 7px 16px #1f70dc2b; transition:background .18s,transform .18s; }
+.playground-run:hover:not(:disabled) { background:#155fc0; transform:translateY(-1px); }
+.playground-run:disabled { opacity:.55; cursor:not-allowed; box-shadow:none; }
+.playground-security { display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:27px; color:#62718a; font-size:13px; line-height:1.4; }
+.playground-security svg { flex:none; color:#178b61; }
+.playground-response { display:flex; flex-direction:column; min-height:590px; }
+.playground-response-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; min-height:91px; padding:19px 22px; border-bottom:1px solid #e4ebf4; }
+.playground-response .playground-card-title>span { background:#e8f1ff; color:#1769d2; }
+.playground-response-meta { display:flex; align-items:center; flex-wrap:wrap; gap:10px; color:#50617a; font-size:14px; font-weight:700; }
+.playground-response-meta>span { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 10px; border-radius:8px; background:#f0f4f9; }
+.playground-response-meta .playground-ok { background:#e8f8f0; color:#13855a; }
+.playground-response-meta button { display:grid; place-items:center; width:36px; height:36px; border:1px solid #d5e1ee; border-radius:8px; background:#fff; color:#285b99; cursor:pointer; }
+.playground-response-meta button:hover { background:#f2f7fd; }
+.playground-json { flex:1; max-height:65vh; min-width:0; overflow:auto; margin:0; padding:24px 26px; background:#f8fafd; color:#223550; font:15px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace; tab-size:2; white-space:pre; }
+.playground-placeholder { display:flex; flex:1; align-items:center; justify-content:center; flex-direction:column; gap:10px; min-height:400px; padding:32px; background:#f8fafd; text-align:center; color:#6d85a4; }
+.playground-placeholder>svg:not(.playground-spinner) { box-sizing:content-box; padding:18px; border-radius:19px; background:#e9f1fb; color:#2d76ca; }
+.playground-placeholder strong { margin-top:8px; color:#283d59; font-size:18px; }
+.playground-placeholder span { font-size:14px; line-height:1.5; }
+.playground-error,.playground-empty { display:flex; align-items:center; gap:11px; margin:0 0 17px; padding:14px 17px; border:1px solid #f0c5cc; border-radius:12px; background:#fff5f6; color:#ab3448; font-size:14px; line-height:1.5; }
+.playground-error button { display:inline-flex; align-items:center; gap:6px; margin-left:auto; padding:7px 10px; border:1px solid #e5b8bf; border-radius:8px; background:#fff; color:#9c3041; font:inherit; font-weight:700; cursor:pointer; }
+.playground-empty { align-items:flex-start; border-color:#ecd8ae; background:#fffaf0; color:#90651d; }
+.playground-empty>div { display:grid; gap:3px; }.playground-empty span { color:#806d4d; }
 .playground-spinner { animation:playground-spin .8s linear infinite; }
 @keyframes playground-spin { to { transform:rotate(360deg); } }
-@media(max-width:800px) { .playground-layout { grid-template-columns:1fr; }.playground-response { min-height:300px; }.playground-json { min-height:230px; } }
+@media(max-width:1050px) { .playground-layout { grid-template-columns:1fr; }.playground-response { min-height:450px; }.playground-placeholder { min-height:330px; } }
+@media(max-width:600px) { .playground-heading { margin-bottom:19px; }.playground-request { padding:20px; }.playground-response-head { padding:18px; }.playground-response-meta { width:100%; }.playground-json { padding:18px; font-size:14px; }.playground-target-switch button { font-size:13px; }.playground-placeholder { min-height:280px; } }
+@media(prefers-reduced-motion:reduce) { .playground-target-switch button,.playground-run { transition:none; }.playground-run:hover:not(:disabled) { transform:none; }.playground-spinner { animation:none; } }
