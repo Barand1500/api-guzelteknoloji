@@ -9,17 +9,20 @@ import { InputError } from "./categories.js";
 import { initDatabase } from "./database.js";
 import { publicRoutes } from "./publicRoutes.js";
 import { searchRoutes } from "./search.js";
+import { uploadDir } from "./uploads.js";
 
 const app = express();
+app.set("trust proxy", 1);
 const port = Number(process.env.PORT || 4010);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(here, "../../public");
 
 app.use(cors({ origin: true }));
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "12mb" }));
 app.use(express.static(publicDir));
+app.use("/uploads", express.static(uploadDir, { immutable: true, maxAge: "1y" }));
 app.use(authRoutes, adminRoutes, searchRoutes, publicRoutes);
-app.get(/^(?!\/api|\/admin|\/auth).*/, (_request, response) => response.sendFile(path.join(publicDir, "index.html")));
+app.get(/^(?!\/api|\/admin|\/auth|\/uploads).*/, (_request, response) => response.sendFile(path.join(publicDir, "index.html")));
 
 const errors: ErrorRequestHandler = (error, _request, response, _next) => {
   if (error instanceof InputError) return void response.status(error.status).json({ success: false, message: error.message });

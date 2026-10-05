@@ -4,6 +4,7 @@ import { initDatabase, pool } from "./database.js";
 import { folderBundle, recordFolderUsage } from "./folderBundles.js";
 
 export const publicRoutes = Router();
+const publicBaseUrl = (request: Request) => String(process.env.PUBLIC_BASE_URL || `${request.protocol}://${request.get("host")}`).replace(/\/$/, "");
 
 async function serviceEnabled(_request: Request, response: Response, next: NextFunction) {
   await initDatabase();
@@ -32,14 +33,14 @@ async function serveCategory(request: Request, response: Response) {
   const apiKey = String(request.headers["x-api-key"] || request.query.apiKey || "");
   const [counts] = await pool.query<any[]>("SELECT COUNT(*) AS total FROM api_keys");
   if (request.path.startsWith("/api/categories/") && Number(counts[0].total) === 0) {
-    return response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data: await publicData(category) });
+    return response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data: await publicData(category, publicBaseUrl(request)) });
   }
   const key = await apiKeyForCategory(apiKey, category.id);
   if (!key) throw new InputError("Bu API için geçerli bir X-API-Key gerekli", 401);
   await pool.query("INSERT INTO api_usage_logs(api_key_id,category_id,origin_host) VALUES(?,?,?)", [
     key.id, category.id, String(request.headers.origin || request.headers.referer || request.headers.host || "").slice(0, 255),
   ]);
-  response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data: await publicData(category) });
+  response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data: await publicData(category, publicBaseUrl(request)) });
 }
 
 publicRoutes.get("/health", async (_request, response) => {
@@ -56,7 +57,7 @@ publicRoutes.get("/v1/:slug", serviceEnabled, serveCategory);
 async function serveFolder(request: Request, response: Response) {
   const folderId = Number(request.params.folderId);
   const apiKey = String(request.headers["x-api-key"] || request.query.apiKey || "").trim();
-  const result = await folderBundle(folderId, apiKey);
+  const result = await folderBundle(folderId, apiKey, publicBaseUrl(request));
   await recordFolderUsage(result.keyId, folderId, String(request.headers.origin || request.headers.referer || request.headers.host || ""));
   response.json(result.response);
 }

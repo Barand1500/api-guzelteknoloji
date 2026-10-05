@@ -69,5 +69,23 @@
 .keys-modal-actions > button:not(.keys-primary):not(.keys-danger) { min-height: 40px; padding: 0 13px; border: 1px solid #dce5ee; border-radius: 9px; background: #fff; color: #45556b; font-weight: 700; cursor: pointer; }
 .keys-danger { min-height: 40px; padding: 0 14px; border: 0; border-radius: 9px; background: #df4357; color: #fff; font-weight: 700; cursor: pointer; }.keys-danger:disabled { opacity: .55; }
 .keys-delete-modal p strong { color: #253349; }
+.keys-create-modal { width: min(580px, 100%); padding: 30px; }
+.keys-create-modal h2 { margin-top: 17px; font-size: 24px; letter-spacing: -.03em; }
+.keys-create-modal > p { margin-bottom: 25px; font-size: 14px; }
+.keys-create-modal form { gap: 23px; }
+.keys-create-modal .keys-field { gap: 9px; font-size: 13px; }
+.keys-create-modal .keys-field > input,.keys-create-modal .keys-field > select { width: 100%; min-height: 45px; padding: 0 13px; border: 1px solid #d7e2ee; border-radius: 10px; outline: 0; background: #fff; color: #283e58; font: inherit; font-size: 14px; font-weight: 500; }
+.keys-create-modal .keys-field > select:focus { border-color: #2d7cdb; box-shadow: 0 0 0 3px #2d7cdb18; }
+.keys-create-modal .keys-field > small { color: #7c8ca0; font-size: 12px; font-weight: 500; line-height: 1.45; }
+.keys-scope-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.keys-scope-options > label { display: flex; align-items: flex-start; gap: 11px; min-height: 92px; padding: 14px; border: 1px solid #dce6f1; border-radius: 12px; background: #fafcff; cursor: pointer; }
+.keys-scope-options > label:has(input:checked) { border-color: #7fb2ee; background: #eef6ff; box-shadow: 0 0 0 3px #2478d911; }
+.keys-scope-options input { width: 17px; height: 17px; flex: none; margin: 2px 0 0; accent-color: #1f6fd8; }
+.keys-scope-options label > span { min-width: 0; display: grid; gap: 6px; }
+.keys-scope-options strong { color: #263a55; font-size: 14px; }
+.keys-scope-options small { color: #75879c; font-size: 12px; line-height: 1.4; }
+.keys-create-modal .keys-modal-actions { padding-top: 17px; border-top: 1px solid #e8edf4; }
+.keys-create-modal .keys-modal-actions > button { min-height: 43px; font-size: 13px; }
+@media (max-width: 520px) { .keys-scope-options { grid-template-columns: 1fr; }.keys-create-modal { padding: 22px; } }
 @media (max-width: 1050px) { .keys-table { min-width: 1050px; } }
 @media (max-width: 700px) { .keys-heading { align-items: flex-start; flex-direction: column; }.keys-toolbar, .keys-pagination { flex-wrap: wrap; }.keys-tools { width: 100%; }.keys-search { width: 100%; }.keys-tools select { flex: none; }.keys-pagination > div { width: 100%; justify-content: flex-end; } }

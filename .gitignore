@@ -5,4 +5,5 @@ dist/
 .deploy-previous.*/
 .env
 data/
+uploads/
 guzel-api-server.zip

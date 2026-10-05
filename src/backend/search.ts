@@ -22,7 +22,7 @@ searchRoutes.get("/admin/search", requireAuth, async (request, response) => {
     }
     if (!category.table_name) continue;
     const expressions = ["CAST(id AS CHAR) LIKE ?", ...fields.map(field => `CAST(${identifier(field.sql_name!)} AS CHAR) LIKE ?`)];
-    const [rows] = await pool.query<any[]>(`SELECT * FROM ${identifier(category.table_name)} WHERE ${expressions.join(" OR ")} ORDER BY gtk_sort_order,id LIMIT 12`, expressions.map(() => pattern));
+    const [rows] = await pool.query<any[]>(`SELECT * FROM ${identifier(category.table_name)} WHERE ${expressions.join(" OR ")} ORDER BY id LIMIT 12`, expressions.map(() => pattern));
     for (const row of rows) {
       const matchingField = fields.find(field => String(row[field.sql_name!] ?? "").toLocaleLowerCase("tr-TR").includes(query.toLocaleLowerCase("tr-TR")));
       const labelField = fields.find(field => field.field_type === "text") || matchingField;

@@ -1,10 +1,11 @@
 import { Router, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import { requireAuth } from "./auth.js";
-import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders, createCategory, createCategoryFolder, deleteCategory, deleteColumn, getSchema, InputError, publicData, saveSchema, updateCategory } from "./categories.js";
+import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders, createCategory, createCategoryFolder, deleteCategory, deleteColumn, getSchema, InputError, publicData, relationChoices, saveSchema, updateCategory } from "./categories.js";
 import { initDatabase, pool, withTransaction } from "./database.js";
 import { databaseSchema, databaseTableRows } from "./schemaExplorer.js";
 import { folderBundle, recordFolderUsage } from "./folderBundles.js";
+import { saveImage } from "./uploads.js";
 
 export const adminRoutes = Router();
 adminRoutes.use("/admin", requireAuth);
@@ -81,6 +82,10 @@ adminRoutes.put("/admin/panel-preferences", async (request, response) => {
 
 adminRoutes.get("/admin/categories", async (_request, response) => response.json({ success: true, data: await categories() }));
 adminRoutes.get("/admin/database-schema", async (_request, response) => response.json({ success: true, data: await databaseSchema() }));
+adminRoutes.post("/admin/images", async (request, response) => {
+  const url = await saveImage(String(request.body?.dataUrl || ""));
+  response.status(201).json({ success: true, data: { url } });
+});
 adminRoutes.get("/admin/database-schema/:table/rows", async (request, response) => {
   const page = Number(request.query.page || 1);
   if (!Number.isSafeInteger(page) || page < 1 || page > 100000) throw new InputError("Sayfa numarası geçersiz");
@@ -100,6 +105,7 @@ adminRoutes.post("/admin/categories", async (request, response) => {
 adminRoutes.patch("/admin/categories/:id", async (request, response) => response.json({ success: true, data: await updateCategory(Number(request.params.id), request.body || {}) }));
 adminRoutes.delete("/admin/categories/:id", async (request, response) => { await deleteCategory(Number(request.params.id)); response.json({ success: true }); });
 adminRoutes.get("/admin/categories/:id/schema", async (request, response) => response.json({ success: true, data: await getSchema(Number(request.params.id)) }));
+adminRoutes.get("/admin/categories/:id/relation-options", async (request, response) => response.json({ success: true, data: await relationChoices(Number(request.params.id)) }));
 adminRoutes.put("/admin/categories/:id/schema", async (request, response) => response.json({ success: true, data: await saveSchema(Number(request.params.id), request.body || {}) }));
 adminRoutes.post("/admin/categories/:id/columns", async (request, response) => response.status(201).json({ success: true, data: await addColumn(Number(request.params.id), request.body || {}) }));
 adminRoutes.delete("/admin/categories/:categoryId/columns/:columnId", async (request, response) => { await deleteColumn(Number(request.params.categoryId), Number(request.params.columnId)); response.json({ success: true }); });
@@ -193,7 +199,8 @@ adminRoutes.post("/admin/playground/:categoryId", async (request, response) => {
     const key = await apiKeyForCategory(apiKey, categoryId);
     if (!key) throw new InputError("Bu anahtar kategoriye erişemiyor veya geçersiz", 401);
     const started = performance.now();
-    const data = await publicData(category);
+    const baseUrl = String(process.env.PUBLIC_BASE_URL || `${request.protocol}://${request.get("host")}`).replace(/\/$/, "");
+    const data = await publicData(category, baseUrl);
     const durationMs = Math.round(performance.now() - started);
     await pool.query("INSERT INTO api_usage_logs(api_key_id,category_id,origin_host) VALUES(?,?,?)", [key.id, categoryId, "admin-playground"]);
     response.json({ success: true, data: { status: 200, durationMs, endpoint: `/v1/${category.slug}`, response: { success: true, category: { id: category.id, name: category.name, slug: category.slug }, data } } });
@@ -206,7 +213,8 @@ adminRoutes.post("/admin/playground/folders/:folderId", async (request, response
   const folderId = Number(request.params.folderId);
   const apiKey = String(request.body?.apiKey || "").trim();
   const started = performance.now();
-  const result = await folderBundle(folderId, apiKey);
+  const baseUrl = String(process.env.PUBLIC_BASE_URL || `${request.protocol}://${request.get("host")}`).replace(/\/$/, "");
+  const result = await folderBundle(folderId, apiKey, baseUrl);
   const durationMs = Math.round(performance.now() - started);
   await recordFolderUsage(result.keyId, folderId, "admin-playground");
   response.json({ success: true, data: {

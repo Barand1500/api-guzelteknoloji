@@ -1,7 +1,7 @@
 import { addForeignKey, columnName, ensurePhysicalTable, identifier, initDatabase, pool, sqlType, tableName, withTransaction, type CategoryFolderRow, type CategoryRow, type ColumnRow } from "./database.js";
 
-export type FieldType = "text" | "number" | "boolean" | "date" | "relation";
-const fieldTypes = new Set<FieldType>(["text", "number", "boolean", "date", "relation"]);
+export type FieldType = "text" | "number" | "boolean" | "date" | "relation" | "image";
+const fieldTypes = new Set<FieldType>(["text", "number", "boolean", "date", "relation", "image"]);
 const categoryIcons = new Set([
   "code", "home", "briefcase", "pulse", "pay", "chart", "sliders", "gear",
   "book", "boxes", "building", "calendar", "cloud", "data", "document",
@@ -214,8 +214,8 @@ export async function deleteColumn(categoryId: number, columnId: number) {
 function dataValue(value: unknown, fieldType: string) {
   if (value === "" || value === undefined || value === null) return null;
   if (fieldType === "number") {
-    const number = Number(value);
-    if (!Number.isFinite(number)) throw new InputError("Sayısal alana geçerli bir sayı girin");
+    const number = String(value).trim().replace(",", ".");
+    if (!/^-?(?:0|[1-9]\d{0,13})(?:\.\d{1,6})?$/.test(number)) throw new InputError("Sayı en fazla 14 tam ve 6 ondalık basamak içermeli");
     return number;
   }
   if (fieldType === "boolean") return value === true || value === "true" || value === "1" || value === 1 ? 1 : 0;
@@ -227,16 +227,28 @@ function dataValue(value: unknown, fieldType: string) {
     if (!/^[1-9]\d*$/.test(String(value))) throw new InputError("İlişkili kayıt geçersiz");
     return Number(value);
   }
+  if (fieldType === "image") {
+    const image = String(value);
+    if (!/^\/uploads\/images\/[0-9a-f-]{36}\.(?:png|jpg|webp)$/.test(image) &&
+        !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image)) {
+      throw new InputError("Görsel alanı geçersiz");
+    }
+    if (image.length > 1_450_000) throw new InputError("Görsel en fazla 1 MB olabilir");
+    return image;
+  }
   return String(value);
 }
 
 async function rowValues(table: string, fields: ColumnRow[], publicOnly: boolean) {
-  const [rows] = await pool.query<any[]>(`SELECT * FROM ${identifier(table)} ${publicOnly ? "WHERE active=1" : ""} ORDER BY gtk_sort_order,id`);
+  const [rows] = await pool.query<any[]>(`SELECT * FROM ${identifier(table)} ${publicOnly ? "WHERE active=1" : ""} ORDER BY id`);
   return rows.map(row => ({
     id: String(row.id), active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at,
     data: Object.fromEntries(fields.map(field => {
       const value = row[field.sql_name!];
-      return [String(field.id), value instanceof Date ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}` : value === null ? "" : String(value)];
+      const display = field.field_type === "number" && value !== null
+        ? String(value).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")
+        : String(value);
+      return [String(field.id), value instanceof Date ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}` : value === null ? "" : display];
     })),
   }));
 }
@@ -245,15 +257,26 @@ export async function getSchema(categoryId: number) {
   const category = await categoryById(categoryId);
   const fields = await columnRows(categoryId);
   const rows = await rowValues(category.table_name!, fields, false);
-  const relationOptions: Record<number, { id: string; label: string }[]> = {};
+  const relationOptions: Record<number, { id: string; label: string; detail: string }[]> = {};
   for (const referenceId of new Set(fields.map(field => field.reference_category_id).filter((id): id is number => Boolean(id)))) {
-    const target = await categoryById(referenceId);
-    const targetFields = await columnRows(referenceId);
-    const labelField = targetFields.find(field => field.field_type === "text") || targetFields[0];
-    const [choices] = await pool.query<any[]>(`SELECT id${labelField ? `,${identifier(labelField.sql_name!)} AS label` : ""} FROM ${identifier(target.table_name!)} ORDER BY updated_at DESC`);
-    relationOptions[referenceId] = choices.map(choice => ({ id: choice.id, label: String(choice.label || choice.id) }));
+    relationOptions[referenceId] = await relationChoices(referenceId);
   }
   return { category: visibleCategory(category), columns: fields.map(visibleColumn), rows, relationOptions };
+}
+
+export async function relationChoices(categoryId: number) {
+  const target = await categoryById(categoryId);
+  const fields = (await columnRows(categoryId)).filter(field => field.field_type !== "image");
+  const labelField = fields.find(field => field.field_type === "text") || fields[0];
+  const selected = fields.map(field => identifier(field.sql_name!));
+  const [rows] = await pool.query<any[]>(`SELECT id${selected.length ? `,${selected.join(",")}` : ""} FROM ${identifier(target.table_name!)} ORDER BY id`);
+  return rows.map(row => ({
+    id: String(row.id),
+    label: labelField ? String(row[labelField.sql_name!] ?? row.id) : String(row.id),
+    detail: fields.filter(field => field.id !== labelField?.id)
+      .map(field => row[field.sql_name!] === null || row[field.sql_name!] === "" ? "" : `${field.name}: ${row[field.sql_name!]}`)
+      .filter(Boolean).slice(0, 3).join(" · "),
+  }));
 }
 
 export async function saveRows(categoryId: number, inputRows: any[]) {
@@ -264,11 +287,11 @@ export async function saveRows(categoryId: number, inputRows: any[]) {
   await withTransaction(async connection => {
     const [existing] = await connection.query<any[]>(`SELECT id FROM ${table}`);
     const remaining = new Set(existing.map(row => String(row.id)));
-    for (const [position, row] of inputRows.entries()) {
+    for (const row of inputRows) {
       const id = typeof row.id === "string" && /^[1-9]\d*$/.test(row.id) && remaining.has(row.id) ? Number(row.id) : null;
       const values = fields.map(field => dataValue(row.data?.[String(field.id)] ?? row.data?.[field.name], field.field_type));
-      const names = [...(id === null ? [] : ["id"]), "gtk_sort_order", "active", ...fields.map(field => field.sql_name!)];
-      const inserts = [...(id === null ? [] : [id]), position, row.active === false ? 0 : 1, ...values];
+      const names = [...(id === null ? [] : ["id"]), "active", ...fields.map(field => field.sql_name!)];
+      const inserts = [...(id === null ? [] : [id]), row.active === false ? 0 : 1, ...values];
       await connection.query(`INSERT INTO ${table} (${names.map(identifier).join(",")}) VALUES (${names.map(() => "?").join(",")}) ON DUPLICATE KEY UPDATE ${names.slice(id === null ? 0 : 1).map(name => `${identifier(name)}=VALUES(${identifier(name)})`).join(",")}`, inserts);
       if (id !== null) remaining.delete(String(id));
     }
@@ -329,11 +352,15 @@ export async function saveSchema(categoryId: number, payload: { columns: any[]; 
   return getSchema(categoryId);
 }
 
-export async function publicData(category: CategoryRow) {
+export async function publicData(category: CategoryRow, baseUrl = "") {
   const fields = await columnRows(category.id);
   const rows = await rowValues(category.table_name!, fields, true);
   return rows.map(row => ({
     id: Number(row.id),
-    ...Object.fromEntries(fields.map(field => [field.name, row.data[String(field.id)] ?? null])),
+    ...Object.fromEntries(fields.map(field => {
+      const value = row.data[String(field.id)] ?? null;
+      return [field.name, field.field_type === "image" && typeof value === "string" && value.startsWith("/uploads/")
+        ? `${baseUrl}${value}` : value];
+    })),
   }));
 }

@@ -83,6 +83,14 @@ The read-only database table inventory is available with `npm run db:audit`. It 
 
 Bir paket çağrısı istatistiklerde tek istek olarak kaydedilir. İlk deploy sırasında `api_usage_logs.folder_id` nullable sütunu ve foreign key'i eklenir; eski istek kayıtları korunur. Üretim deploy'undan önce MySQL yedeği alın.
 
+## Görsel alanları ve satır sırası
+
+Kategori yönetimindeki `Görsel` sütunu PNG, JPEG ve WebP dosyalarını kabul eder (dosya başına en fazla 1 MB). Kullanıcı her hücrede dosyayı sunucudaki `uploads/images/` klasörüne yazdırmayı veya Base64 veri URL'si olarak MySQL'de saklamayı seçebilir. `uploads/` deploy sırasında korunur ve Git'e eklenmez; sunucu yedeğine bu klasörü de dahil edin. Çok sayıda Base64 görsel yanıt ve veritabanı boyutunu artırır.
+
+API yanıtları yüklenen görselleri tam URL olarak döndürür. Alan adını sabitlemek için sunucunun `.env` dosyasına `PUBLIC_BASE_URL=https://api.guzelteknoloji.com` ekleyin. Ayar yoksa istek hostu kullanılır.
+
+Satırlar artık otomatik `id` sırasıyla okunur. Başlangıç migrasyonu etkin kategori tablolarındaki `gtk_sort_order` sütununu kaldırır; kayıtları ve ID'leri korur. Eski JSON geçiş yedekleri otomatik silinmez. Deploy öncesinde MySQL yedeği alın.
+
 ## Git ile deploy
 
 Sunucuda proje bir kez klonlandıktan sonra:

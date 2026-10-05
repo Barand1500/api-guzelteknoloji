@@ -4,7 +4,7 @@ import { initDatabase, pool, type CategoryFolderRow, type CategoryRow } from "./
 
 interface BundleFolderRow extends CategoryFolderRow { parent_id: number | null }
 
-export async function folderBundle(folderId: number, apiKey: string) {
+export async function folderBundle(folderId: number, apiKey: string, baseUrl = "") {
   if (!Number.isSafeInteger(folderId) || folderId < 1) throw new InputError("Klasör geçersiz");
   await initDatabase();
   const [found] = await pool.query<CategoryFolderRow[]>(
@@ -47,7 +47,7 @@ export async function folderBundle(folderId: number, apiKey: string) {
       id: category.id,
       name: category.name,
       slug: category.slug,
-      data: await publicData(category),
+      data: await publicData(category, baseUrl),
     }))),
   })));
   groups.sort((a, b) => a.folder.path.localeCompare(b.folder.path, "tr"));
