@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   Columns3,
   Database,
   Eye,
@@ -306,16 +307,18 @@ export default function CategoryEditor({
         </div>
       </div>
 
-      <section className="editor-card">
-        <div className="editor-section-head">
+      <details className="editor-card editor-columns-accordion">
+        <summary className="editor-section-head">
           <div>
             <Columns3 size={18} />
             <div>
               <h3>Sütun yapısı</h3>
-              <p>ID ve tarih alanları otomatik yönetilir.</p>
+              <p>{schema.columns.length} özel sütun</p>
             </div>
           </div>
-        </div>
+          <span className="editor-accordion-action">Sütunları düzenle <ChevronDown size={18} /></span>
+        </summary>
+        <div className="editor-columns-content">
         <div className="editor-column-list">
           {schema.columns.map((column) => (
             <div className="editor-column" key={column.id}>
@@ -390,7 +393,8 @@ export default function CategoryEditor({
             <Plus size={16} /> Sütun ekle
           </button>
         </div>
-      </section>
+        </div>
+      </details>
 
       <section className="editor-card editor-data-card">
         {" "}

@@ -311,3 +311,15 @@
 .editor-system-visibility > div { position: absolute; z-index: 15; top: calc(100% + 6px); right: 0; min-width: 225px; display: grid; gap: 3px; padding: 8px; border: 1px solid #dce6f1; border-radius: 10px; background: #fff; box-shadow: 0 15px 35px #1b355022; }
 .editor-system-visibility label { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 7px; color: #344c66; font-size: 13px; cursor: pointer; }.editor-system-visibility label:hover { background: #f2f7fd; }
 .editor-system-visibility input { width: 16px; height: 16px; margin: 0; accent-color: #2677d5; }
+.editor-columns-accordion > summary { cursor:pointer; list-style:none; border-bottom:0; user-select:none; }
+.editor-columns-accordion > summary::-webkit-details-marker { display:none; }
+.editor-columns-accordion > summary:hover { background:#f8fbff; }
+.editor-columns-accordion > summary:focus-visible { outline:3px solid #a8caff; outline-offset:-3px; }
+.editor-columns-accordion[open] > summary { border-bottom:1px solid var(--admin-border); }
+.editor-accordion-action { display:inline-flex; align-items:center; gap:9px; color:#276fc3; font-size:13px; font-weight:700; white-space:nowrap; }
+.editor-accordion-action svg { transition:transform .25s ease; }
+.editor-columns-accordion[open] .editor-accordion-action svg { transform:rotate(180deg); }
+.editor-columns-accordion[open] .editor-columns-content { animation:editor-accordion-enter .25s ease-out; }
+@keyframes editor-accordion-enter { from { opacity:0; transform:translateY(-7px); } to { opacity:1; transform:translateY(0); } }
+@media(max-width:520px) { .editor-accordion-action { font-size:0; }.editor-accordion-action svg { width:20px; height:20px; } }
+@media(prefers-reduced-motion:reduce) { .editor-accordion-action svg { transition:none; }.editor-columns-accordion[open] .editor-columns-content { animation:none; } }
