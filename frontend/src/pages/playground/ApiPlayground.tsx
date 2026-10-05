@@ -2,7 +2,7 @@ import gsap from "gsap";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, Check, Clock3, Code2, Copy, FlaskConical, LoaderCircle, Play, RefreshCw, ShieldCheck } from "lucide-react";
 import { request } from "../../shared/api";
-import type { Category } from "../../shared/types";
+import type { Category, CategoryFolder } from "../../shared/types";
 import { Loading } from "../../shared/ui";
 import "./playground.css";
 
@@ -10,6 +10,9 @@ type TestResult = { status: number; durationMs: number; endpoint: string; respon
 
 export default function ApiPlayground({ token }: { token: string }) {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [folders, setFolders] = useState<CategoryFolder[]>([]);
+  const [targetType, setTargetType] = useState<"category" | "folder">("category");
+  const [folderId, setFolderId] = useState("");
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [categoriesError, setCategoriesError] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -24,11 +27,18 @@ export default function ApiPlayground({ token }: { token: string }) {
     setCategoriesLoading(true);
     setCategoriesError("");
     try {
-      const items = await request<Category[]>("/admin/categories", token);
+      const [items, folderItems] = await Promise.all([
+        request<Category[]>("/admin/categories", token),
+        request<CategoryFolder[]>("/admin/category-folders", token),
+      ]);
       setCategories(items);
+      setFolders(folderItems);
       setCategoryId(current => items.some(item => String(item.id) === current && item.active)
         ? current
         : items.find(item => item.active)?.id.toString() || "");
+      setFolderId(current => folderItems.some(item => String(item.id) === current)
+        ? current : folderItems[0]?.id.toString() || "");
+      if (!items.some(item => item.active) && folderItems.length) setTargetType("folder");
     } catch (reason) {
       setCategoriesError((reason as Error).message || "Kategoriler alınamadı.");
     } finally {
@@ -43,15 +53,17 @@ export default function ApiPlayground({ token }: { token: string }) {
   }, []);
 
   async function runTest() {
-    if (!categoryId || !apiKey.trim()) {
-      setError("Kategori seçin ve API anahtarını girin.");
+    const targetId = targetType === "folder" ? folderId : categoryId;
+    if (!targetId || !apiKey.trim()) {
+      setError("Kategori veya klasör seçin ve API anahtarını girin.");
       return;
     }
     setBusy(true);
     setError("");
     setResult(null);
     try {
-      const response = await request<TestResult>(`/admin/playground/${categoryId}`, token, {
+      const path = targetType === "folder" ? `/admin/playground/folders/${targetId}` : `/admin/playground/${targetId}`;
+      const response = await request<TestResult>(path, token, {
         method: "POST",
         body: JSON.stringify({ apiKey: apiKey.trim() }),
       });
@@ -76,20 +88,36 @@ export default function ApiPlayground({ token }: { token: string }) {
 
   if (categoriesLoading) return <Loading />;
   const selected = categories.find(item => String(item.id) === categoryId);
-  const endpoint = selected ? `/v1/${selected.slug}` : "/v1/{kategori}";
+  const selectedFolder = folders.find(item => String(item.id) === folderId);
+  const folderPath = (folder: CategoryFolder) => {
+    const parts: string[] = [];
+    const visited = new Set<number>();
+    let current: CategoryFolder | undefined = folder;
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      parts.unshift(current.name);
+      const parentId: number | null = current.parentId;
+      current = parentId === null ? undefined : folders.find(item => item.id === parentId);
+    }
+    return parts.join(" / ");
+  };
+  const endpoint = targetType === "folder"
+    ? selectedFolder ? `/v1/folders/${selectedFolder.id}` : "/v1/folders/{klasör-id}"
+    : selected ? `/v1/${selected.slug}` : "/v1/{kategori}";
 
   return <div className="playground-page" ref={rootRef}>
     <header className="playground-heading"><span className="playground-kicker"><FlaskConical size={14} /> GELİŞTİRİCİ ARAÇLARI</span><h1>API Deneme Alanı</h1></header>
     {categoriesError && <div className="playground-error" role="alert"><AlertCircle size={16} />{categoriesError}<button type="button" onClick={() => void loadCategories()}><RefreshCw size={14} /> Yeniden dene</button></div>}
-    {!categoriesError && !categories.length && <div className="playground-empty" role="status"><AlertCircle size={18} /><div><strong>Henüz test edilecek kategori yok</strong><span>API isteği gönderebilmek için önce Yeni Kategori bölümünden bir kategori oluşturun.</span></div></div>}
+    {!categoriesError && !categories.length && !folders.length && <div className="playground-empty" role="status"><AlertCircle size={18} /><div><strong>Henüz test edilecek kaynak yok</strong><span>Önce Yeni Kategori bölümünden bir kategori veya klasör oluşturun.</span></div></div>}
     {error && <div className="playground-error" role="alert">{error}</div>}
     <div className="playground-layout">
       <section className="playground-card playground-request" data-playground-card>
         <div className="playground-card-title"><span><Code2 size={18} /></span><div><h2>İstek ayarları</h2><p>İstek sunucuda doğrulanır; API anahtarı tarayıcı adresine eklenmez.</p></div></div>
-        <label className="playground-field">Kategori<select value={categoryId} onChange={event => { setCategoryId(event.target.value); setResult(null); }} disabled={!categories.length}><option value="">Kategori seçin</option>{categories.map(item => <option key={item.id} value={item.id} disabled={!item.active}>{item.folderPath ? `${item.folderPath} / ` : ""}{item.name}{item.active ? "" : " (API kapalı)"}</option>)}</select></label>
+        <div className="playground-target-switch" role="group" aria-label="API kapsamı"><button type="button" className={targetType === "category" ? "active" : ""} disabled={!categories.some(item => item.active)} onClick={() => { setTargetType("category"); setResult(null); }}>Tek kategori</button><button type="button" className={targetType === "folder" ? "active" : ""} disabled={!folders.length} onClick={() => { setTargetType("folder"); setResult(null); }}>Klasör paketi</button></div>
+        {targetType === "folder" ? <label className="playground-field">Klasör<select value={folderId} onChange={event => { setFolderId(event.target.value); setResult(null); }} disabled={!folders.length}><option value="">Klasör seçin</option>{folders.map(item => <option key={item.id} value={item.id}>{folderPath(item)}</option>)}</select></label> : <label className="playground-field">Kategori<select value={categoryId} onChange={event => { setCategoryId(event.target.value); setResult(null); }} disabled={!categories.length}><option value="">Kategori seçin</option>{categories.map(item => <option key={item.id} value={item.id} disabled={!item.active}>{item.folderPath ? `${item.folderPath} / ` : ""}{item.name}{item.active ? "" : " (API kapalı)"}</option>)}</select></label>}
         <label className="playground-field">X-API-Key<input type="password" autoComplete="off" spellCheck={false} value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder="gtk_..." /></label>
         <div className="playground-endpoint"><span>GET</span><code>{endpoint}</code><button type="button" onClick={() => void navigator.clipboard.writeText(endpoint)} title="Endpoint adresini kopyala"><Copy size={15} /></button></div>
-        <button className="playground-run" type="button" disabled={busy || !categoryId || !selected?.active} onClick={() => void runTest()}>{busy ? <LoaderCircle size={16} className="playground-spinner" /> : <Play size={16} />}{busy ? "İstek gönderiliyor..." : "API isteğini çalıştır"}</button>
+        <button className="playground-run" type="button" disabled={busy || (targetType === "folder" ? !selectedFolder : !selected?.active)} onClick={() => void runTest()}>{busy ? <LoaderCircle size={16} className="playground-spinner" /> : <Play size={16} />}{busy ? "İstek gönderiliyor..." : "API isteğini çalıştır"}</button>
         <div className="playground-security"><ShieldCheck size={16} /><span>Anahtar yalnızca test isteği sırasında kullanılır ve bu ekranda saklanmaz.</span></div>
       </section>
       <section className="playground-card playground-response" data-playground-card>

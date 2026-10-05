@@ -64,6 +64,25 @@ The administration panel includes combined request statistics/history, an authen
 
 The read-only database table inventory is available with `npm run db:audit`. It reports row counts and possible legacy category tables; it never drops tables. Review `database-audit.txt` and inspect the report before approving any cleanup.
 
+## Klasör paketi API'si
+
+`GET /v1/folders/:folderId` veya `GET /api/folders/:folderId` isteğinde `X-API-Key` başlığı gönderilir. Anahtarın seçilen klasöre veya üst klasörlerinden birine **klasör yetkisi** olması gerekir. Tekil kategori yetkisi klasör paketine erişim vermez. Yanıt seçilen klasörü ve bütün alt klasörlerini `groups` dizisinde ayrı ayrı döndürür; her grubun `categories` dizisi etkin kategorilerin güncel kayıtlarını içerir. Mevcut tek kategori adresleri (`/v1/:slug` ve `/api/categories/:slug`) değişmez.
+
+Örnek yanıt:
+
+```json
+{
+  "success": true,
+  "folder": { "id": 3, "name": "Ödeme Altyapısı" },
+  "groups": [
+    { "folder": { "id": 4, "name": "Bankalar", "path": "Ödeme Altyapısı / Bankalar" },
+      "categories": [{ "id": 9, "name": "Banka Listesi", "slug": "bankalar", "data": [] }] }
+  ]
+}
+```
+
+Bir paket çağrısı istatistiklerde tek istek olarak kaydedilir. İlk deploy sırasında `api_usage_logs.folder_id` nullable sütunu ve foreign key'i eklenir; eski istek kayıtları korunur. Üretim deploy'undan önce MySQL yedeği alın.
+
 ## Git ile deploy
 
 Sunucuda proje bir kez klonlandıktan sonra:

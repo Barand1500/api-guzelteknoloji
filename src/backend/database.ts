@@ -140,7 +140,7 @@ async function createMetadata() {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_usage_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY, api_key_id CHAR(36) NOT NULL,
-    category_id INT NULL, origin_host VARCHAR(255) NULL,
+    category_id INT NULL, folder_id INT NULL, origin_host VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_usage_key (api_key_id), INDEX idx_usage_category (category_id),
     CONSTRAINT fk_usage_key FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE CASCADE,
@@ -173,6 +173,11 @@ async function createMetadata() {
   );
   if (!folderConstraint.length) await pool.query("ALTER TABLE api_categories ADD CONSTRAINT fk_api_category_folder FOREIGN KEY (folder_id) REFERENCES api_category_folders(id) ON DELETE SET NULL");
   await addMetadataColumn("api_panel_preferences", "font_family", "VARCHAR(32) NOT NULL DEFAULT 'inter'");
+  await addMetadataColumn("api_usage_logs", "folder_id", "INT NULL");
+  const [usageFolderConstraint] = await pool.query<any[]>(
+    "SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='api_usage_logs' AND CONSTRAINT_NAME='fk_usage_folder' LIMIT 1",
+  );
+  if (!usageFolderConstraint.length) await pool.query("ALTER TABLE api_usage_logs ADD CONSTRAINT fk_usage_folder FOREIGN KEY (folder_id) REFERENCES api_category_folders(id) ON DELETE SET NULL");
   await addMetadataColumn("api_category_columns", "sql_name", "VARCHAR(64) NULL");
   await addMetadataColumn("api_category_columns", "reference_category_id", "INT NULL");
   await pool.query("UPDATE api_category_columns SET field_type='text' WHERE field_type NOT IN ('text','number','boolean','date','relation')");

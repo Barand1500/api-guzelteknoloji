@@ -334,6 +334,6 @@ export async function publicData(category: CategoryRow) {
   const rows = await rowValues(category.table_name!, fields, true);
   return rows.map(row => ({
     id: Number(row.id),
-    ...Object.fromEntries(fields.map(field => [field.name, row.data[String(field.id)] || null])),
+    ...Object.fromEntries(fields.map(field => [field.name, row.data[String(field.id)] ?? null])),
   }));
 }

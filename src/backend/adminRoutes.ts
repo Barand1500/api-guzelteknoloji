@@ -4,6 +4,7 @@ import { requireAuth } from "./auth.js";
 import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders, createCategory, createCategoryFolder, deleteCategory, deleteColumn, getSchema, InputError, publicData, saveSchema, updateCategory } from "./categories.js";
 import { initDatabase, pool, withTransaction } from "./database.js";
 import { databaseSchema, databaseTableRows } from "./schemaExplorer.js";
+import { folderBundle, recordFolderUsage } from "./folderBundles.js";
 
 export const adminRoutes = Router();
 adminRoutes.use("/admin", requireAuth);
@@ -130,10 +131,11 @@ adminRoutes.get("/admin/usage/summary", async (request, response) => {
       FROM api_usage_logs WHERE ${range}`, [from, to]);
     const [daily] = await pool.query<any[]>(`SELECT DATE(created_at) day,COUNT(*) requests FROM api_usage_logs
       WHERE ${range} GROUP BY DATE(created_at) ORDER BY day`, [from, to]);
-    const [byCategory] = await pool.query<any[]>(`SELECT c.id categoryId,COALESCE(c.name,'Silinmiş kategori') name,COUNT(*) requests
+    const [byCategory] = await pool.query<any[]>(`SELECT c.id categoryId,COALESCE(c.name,f.name,'Silinmiş kategori') name,COUNT(*) requests
       FROM api_usage_logs l LEFT JOIN api_categories c ON c.id=l.category_id
+      LEFT JOIN api_category_folders f ON f.id=l.folder_id
       WHERE l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)
-      GROUP BY c.id,c.name ORDER BY requests DESC LIMIT 10`, [from, to]);
+      GROUP BY c.id,c.name,f.id,f.name ORDER BY requests DESC LIMIT 10`, [from, to]);
     const [byProject] = await pool.query<any[]>(`SELECT k.id keyId,k.project_name projectName,COUNT(*) requests
       FROM api_usage_logs l JOIN api_keys k ON k.id=l.api_key_id
       WHERE l.created_at >= ? AND l.created_at < DATE_ADD(?, INTERVAL 1 DAY)
@@ -162,15 +164,17 @@ adminRoutes.get("/admin/usage/logs", async (request, response) => {
       values.push(categoryId);
     }
     if (q) {
-      conditions.push("(k.project_name LIKE ? OR c.name LIKE ? OR l.origin_host LIKE ?)");
-      values.push(`%${q}%`, `%${q}%`, `%${q}%`);
+      conditions.push("(k.project_name LIKE ? OR c.name LIKE ? OR f.name LIKE ? OR l.origin_host LIKE ?)");
+      values.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
     const where = conditions.join(" AND ");
     const [counts] = await pool.query<any[]>(`SELECT COUNT(*) total FROM api_usage_logs l
-      LEFT JOIN api_keys k ON k.id=l.api_key_id LEFT JOIN api_categories c ON c.id=l.category_id WHERE ${where}`, values);
-    const [rows] = await pool.query<any[]>(`SELECT l.id,l.created_at createdAt,l.origin_host originHost,
-      k.project_name projectName,c.name categoryName FROM api_usage_logs l
       LEFT JOIN api_keys k ON k.id=l.api_key_id LEFT JOIN api_categories c ON c.id=l.category_id
+      LEFT JOIN api_category_folders f ON f.id=l.folder_id WHERE ${where}`, values);
+    const [rows] = await pool.query<any[]>(`SELECT l.id,l.created_at createdAt,l.origin_host originHost,
+      k.project_name projectName,COALESCE(c.name,f.name) categoryName FROM api_usage_logs l
+      LEFT JOIN api_keys k ON k.id=l.api_key_id LEFT JOIN api_categories c ON c.id=l.category_id
+      LEFT JOIN api_category_folders f ON f.id=l.folder_id
       WHERE ${where} ORDER BY l.created_at DESC,l.id DESC LIMIT ? OFFSET ?`,
     [...values, pageSize, (page - 1) * pageSize]);
     response.json({ success: true, data: { rows, page, pageSize, total: Number(counts[0]?.total || 0) } });
@@ -194,6 +198,21 @@ adminRoutes.post("/admin/playground/:categoryId", async (request, response) => {
     await pool.query("INSERT INTO api_usage_logs(api_key_id,category_id,origin_host) VALUES(?,?,?)", [key.id, categoryId, "admin-playground"]);
     response.json({ success: true, data: { status: 200, durationMs, endpoint: `/v1/${category.slug}`, response: { success: true, category: { id: category.id, name: category.name, slug: category.slug }, data } } });
   });
+
+adminRoutes.post("/admin/playground/folders/:folderId", async (request, response) => {
+  await initDatabase();
+  const [service] = await pool.query<any[]>("SELECT value FROM api_settings WHERE id=1");
+  if (service[0]?.value === "0") throw new InputError("API şu anda kapalı", 503);
+  const folderId = Number(request.params.folderId);
+  const apiKey = String(request.body?.apiKey || "").trim();
+  const started = performance.now();
+  const result = await folderBundle(folderId, apiKey);
+  const durationMs = Math.round(performance.now() - started);
+  await recordFolderUsage(result.keyId, folderId, "admin-playground");
+  response.json({ success: true, data: {
+    status: 200, durationMs, endpoint: `/v1/folders/${folderId}`, response: result.response,
+  } });
+});
 
 adminRoutes.get("/admin/api-keys/:id", async (request, response) => {
     await initDatabase();

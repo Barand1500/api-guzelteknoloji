@@ -1,6 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { apiKeyForCategory, categoryBySlug, InputError, publicData } from "./categories.js";
 import { initDatabase, pool } from "./database.js";
+import { folderBundle, recordFolderUsage } from "./folderBundles.js";
 
 export const publicRoutes = Router();
 
@@ -52,3 +53,12 @@ publicRoutes.get("/api/records", serviceEnabled, async (_request, response) => {
 });
 publicRoutes.get("/api/categories/:slug", serviceEnabled, serveCategory);
 publicRoutes.get("/v1/:slug", serviceEnabled, serveCategory);
+async function serveFolder(request: Request, response: Response) {
+  const folderId = Number(request.params.folderId);
+  const apiKey = String(request.headers["x-api-key"] || request.query.apiKey || "").trim();
+  const result = await folderBundle(folderId, apiKey);
+  await recordFolderUsage(result.keyId, folderId, String(request.headers.origin || request.headers.referer || request.headers.host || ""));
+  response.json(result.response);
+}
+publicRoutes.get("/api/folders/:folderId", serviceEnabled, serveFolder);
+publicRoutes.get("/v1/folders/:folderId", serviceEnabled, serveFolder);
