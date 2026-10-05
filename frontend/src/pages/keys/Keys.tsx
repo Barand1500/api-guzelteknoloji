@@ -1,6 +1,6 @@
 import gsap from "gsap";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, FileKey2, Folder, KeyRound, Plus, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, FileKey2, Folder, KeyRound, Plus, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Table2, Trash2, X } from "lucide-react";
 import { request } from "../../shared/api";
 import type { ApiKey, Category, CategoryFolder } from "../../shared/types";
 import { KeyQuota, QuotaFields } from "./KeyQuota";
@@ -181,9 +181,8 @@ export default function Keys({ token }: { token: string }) {
       {error && <span className="keys-error" role="alert">{error}</span>}<div className="keys-modal-actions"><button type="button" onClick={() => setCreating(false)}>Vazgeç</button><button className="keys-primary" disabled={busy || (accessType === "folder" ? !folders.length : !categories.length)} type="submit">{busy ? "Oluşturuluyor..." : "Anahtar oluştur"}</button></div></form></div></div>}
     {quotaTarget && <div className="keys-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setQuotaTarget(null); }}><div ref={modalRef} className="keys-modal keys-quota-modal" role="dialog" aria-modal="true" aria-labelledby="keys-quota-title">
       <button className="keys-modal-close" onClick={() => setQuotaTarget(null)} aria-label="Kapat"><X size={18} /></button>
-      <span className="keys-modal-icon"><SlidersHorizontal size={21} /></span>
       <h2 id="keys-quota-title">Kullanım sınırları</h2>
-      <div className="keys-quota-identity"><span>DÜZENLENEN PROJE</span><strong>{quotaTarget.projectName}</strong><code>{quotaTarget.apiKey}</code></div>
+      <div className="keys-quota-identity"><div><small>PROJE</small><strong>{quotaTarget.projectName}</strong><code>{quotaTarget.apiKey}</code></div><div className="keys-quota-scopes"><span className="keys-quota-scopes-label">ERİŞİMİ OLAN API'LER</span>{quotaTarget.folderNames.map(name => <span className="keys-quota-scope folder" key={`folder-${name}`}><Folder size={14} />{name} klasörü</span>)}{quotaTarget.categoryNames.map(name => <span className="keys-quota-scope" key={`category-${name}`}><Table2 size={14} />{name}</span>)}{!quotaTarget.folderNames.length && !quotaTarget.categoryNames.length && <span className="keys-quota-no-scope">Henüz API kapsamı tanımlı değil.</span>}</div></div>
       <div className="keys-quota-current"><span><b>Dakika</b><strong>{quotaTarget.minuteUsed.toLocaleString("tr-TR")} kullanıldı</strong></span><span><b>Bu ay</b><strong>{quotaTarget.monthUsed.toLocaleString("tr-TR")} kullanıldı</strong></span></div>
       <form onSubmit={event => void saveQuota(event)}><QuotaFields minuteLimit={quotaTarget.minuteLimit} monthLimit={quotaTarget.monthLimit} />
         {error && <span className="keys-error" role="alert">{error}</span>}
