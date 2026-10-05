@@ -74,3 +74,7 @@ chmod +x deploy.sh
 ```
 
 Sonraki güncellemelerde aynı komut GitHub'dan `main` dalını çeker, derler ve PM2'yi yeniden başlatır. `.env` sunucuda kalır; Git'ten silinmez veya üzerine yazılmaz.
+
+Deploy önce sunucu kodunu ve ön yüzü geçici klasörlere derler. `index.html` içindeki JS/CSS referanslarını doğruladıktan sonra `dist/` ve `public/` klasörlerini yeni sürümle değiştirir. PM2 yeniden başlatılamazsa önceki klasörleri geri yükler. Başarılı deploy sonunda eski `public/assets` dosyaları da kaldırılmış olur; çalışan sürümün assetlerini elle silmeyin.
+
+Bu deploy düzenine ilk geçişte sunucudaki eski `deploy.sh` dosyasını güncellemek için bir kez `git pull --ff-only origin main` çalıştırın; ardından `./deploy.sh` kullanın. Font seçenekleri korunur, ancak derleme yalnızca Türkçe/Latin yazı tiplerini içerir. Dosya adlarının sonundaki hash ve tek satırlı JS/CSS üretim çıktısının normal biçimidir.

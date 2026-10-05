@@ -1,6 +1,8 @@
 node_modules/
 dist/
 /public/
+.deploy-next.*/
+.deploy-previous.*/
 .env
 data/
 guzel-api-server.zip
