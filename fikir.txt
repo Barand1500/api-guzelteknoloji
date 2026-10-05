@@ -1,0 +1,24 @@
+1-Rehber butonu: Sol panelde aşağıda bulunan kısıma bir adet ? iconu lazım. Buna tıkladığımız zaman bizi bir sayfay atacak bu sayfanın amaçı yaptığımız bu web sitesini resimli şekilde anlatmak.
+    Aynı zamanda orada birde tur butonu olacak ona tıkladığ ızaman tek tek anıamsyonlu sekılde adama sayfaları aça aça anlatacak istiyorum. İnteraktif bir anlatım istiyorum adama anlatacak,
+     yeni kısıma geçmeden önce sorunumuz var mı diye soracak belirli bazı sorular olacak adam eğer onalrı seçerse o sorulara yanıt verecek adam ileri derse yeni bölüme gececek anladın mı?
+     Güzel bir şey bekliyorum bir adet maskot gibi bir şey olsun bunu internetten indir konuşuyormuş gibi falan olsun analtsın iste tek tek sayfada gezinsin istiyorum svg falan yapıp kendin yapma.
+
+
+2-Api anahtarları sayfasından klasör izni verince otomatık olarak klasör sayfasında ne için verdiysek ödeme alt yapısı için diyelim ona bir kategori açaçak onun da bir api keyi olacak Bu konumda kategori yok.
+    demesi yerine en azıdnan orada bir şey gözükür mantıkken.
+
+3-Sürüm geçmişi ve geri alma: Kategori sütunları veya kayıtları her kaydedildiğinde bir sürüm oluşsun. Yönetici iki sürümün farkını yan yana görsün; yanlış değişikliği tek tıkla geri alabilsin. Geri alma işleminden önce etkilenecek kayıt ve API alanları gösterilsin.
+
+4-Değişiklik bildirimi (webhook): Bir kategoride veri eklenince, güncellenince veya silinince ilgili projelerin tanımladığı adrese olay gönderilsin. Her proje yalnız erişim izni olan kategorilerin olaylarını alsın. Başarısız gönderimler kuyrukta tekrar denensin ve panelde teslim geçmişi görülsün.
+
+5-Anahtar başına kullanım sınırı: Bir API anahtarına dakika ve ay bazında istek kotası tanımlayabilelim. Sınıra yaklaşınca yöneticiye uyarı gelsin; sınır aşılınca anlaşılır bir HTTP 429 yanıtı dönsün. Gelecekte ücretli paketlerin temelini oluşturur.
+
+6-Zamanlanmış yayın: Bir kaydı veya kategori değişikliğini hazırlayıp belirli bir tarih ve saatte otomatik yayına alabilelim. Yayın öncesi taslak yalnız yönetim panelinde görünsün; dış API eski veriyi sunmaya devam etsin. Gerekirse yayını iptal edebilelim.
+
+7-Veri kalite kuralları: Sütunlara zorunlu alan, benzersiz değer, en küçük/en büyük sayı ve metin uzunluğu gibi kurallar ekleyelim. Kaydetmeden önce hatalı hücreler tabloda işaretlensin; hangi kuralın bozulduğu açıkça yazsın. Aynı kurallar dışarıdan veri ekleme imkânı gelirse orada da uygulansın.
+
+8-Değişiklik etki haritası: Bir sütunu silmeden veya kategoriyi kapatmadan önce hangi ilişkilerin, klasör paketlerinin ve API anahtarlarının etkileneceğini gösterelim. İşlem penceresi gerçek etkiyi saysın ve bağlantılı yerlere gitme olanağı versin.
+
+9-Denetim günlüğü: Kim, ne zaman, hangi kategorinin hangi alanını değiştirdi; önceki ve yeni değer neydi, kaydedilsin. Yönetici tarih ve işlem türüne göre arayabilsin. API anahtarının oluşturulması, yetki değişimi ve silinmesi de burada görünsün.
+
+10-Hesaplanan sütunlar: Kullanıcı iki sayı sütunundan toplam, oran veya fark üreten salt okunur bir alan tanımlayabilsin. Örneğin fiyat ve vergi oranından vergili fiyat üretilebilsin. Formül kaydedilmeden örnek kayıtlarda önizlensin ve döngüsel bağımlılıklara izin verilmesin.
