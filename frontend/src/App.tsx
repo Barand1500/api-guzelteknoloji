@@ -159,7 +159,7 @@ export default function App() {
           create={() => go("new")}
         />
       ) : view === "new" ? (
-        <NewCategory token={token} initialFolderId={openedFolderId} openSequence={folderOpenSequence} done={() => go("dashboard")} manage={category => { setSelected(category); setView("manage"); }} />
+        <NewCategory token={token} initialFolderId={openedFolderId} openSequence={folderOpenSequence} done={() => go("dashboard")} openKeys={() => go("keys")} manage={category => { setSelected(category); setView("manage"); }} />
       ) : view === "keys" ? (
         <Keys token={token} />
       ) : view === "settings" ? (

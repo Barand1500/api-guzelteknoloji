@@ -21,6 +21,7 @@ export type ApiKey = {
   categoryNames: string[];
   categoryIds: number[];
   folderNames: string[];
+  folderIds: number[];
 };
 export type UsageSummary = {
   from: string;

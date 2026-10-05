@@ -119,7 +119,7 @@ adminRoutes.get("/admin/api-keys", async (_request, response) => {
     (SELECT COUNT(*) FROM api_usage_logs month_log WHERE month_log.api_key_id=k.id AND month_log.id > k.month_reset_log_id AND month_log.created_at >= DATE_FORMAT(NOW(),'%Y-%m-01 00:00:00')) monthUsed,
     COUNT(DISTINCT l.id) usageCount,COUNT(DISTINCT NULLIF(l.origin_host,'')) siteCount,
     GROUP_CONCAT(DISTINCT c.name SEPARATOR '||') categoryNames,GROUP_CONCAT(DISTINCT c.id) categoryIds,
-    GROUP_CONCAT(DISTINCT f.name SEPARATOR '||') folderNames
+    GROUP_CONCAT(DISTINCT f.name SEPARATOR '||') folderNames,GROUP_CONCAT(DISTINCT f.id) folderIds
     FROM api_keys k LEFT JOIN api_key_categories kc ON kc.api_key_id=k.id
     LEFT JOIN api_key_folders kf ON kf.api_key_id=k.id LEFT JOIN api_category_folders f ON f.id=kf.folder_id
     LEFT JOIN api_categories c ON c.id=kc.category_id LEFT JOIN api_usage_logs l ON l.api_key_id=k.id
@@ -131,6 +131,7 @@ adminRoutes.get("/admin/api-keys", async (_request, response) => {
     categoryNames: row.categoryNames ? String(row.categoryNames).split("||") : [],
     categoryIds: row.categoryIds ? String(row.categoryIds).split(",").map(Number) : [],
     folderNames: row.folderNames ? String(row.folderNames).split("||") : [],
+    folderIds: row.folderIds ? String(row.folderIds).split(",").map(Number) : [],
   })) });
 });
 
