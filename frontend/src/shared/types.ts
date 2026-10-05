@@ -38,6 +38,7 @@ export type DatabaseSchema = {
     dataBytes: number | null;
     indexBytes: number | null;
     category: { id: number; name: string } | null;
+    referencedBy: { table: string; column: string; targetColumn: string; constraint: string }[];
     columns: {
       name: string;
       sqlType: string;
@@ -49,6 +50,12 @@ export type DatabaseSchema = {
       reference: { table: string; column: string; constraint: string } | null;
     }[];
   }[];
+};
+export type DatabaseTableRows = {
+  rows: Record<string, unknown>[];
+  page: number;
+  pageSize: number;
+  total: number;
 };
 export type LoginSettings = {
   quickLoginEnabled: boolean;

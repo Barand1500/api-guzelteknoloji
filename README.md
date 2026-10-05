@@ -77,4 +77,12 @@ Sonraki güncellemelerde aynı komut GitHub'dan `main` dalını çeker, derler v
 
 Deploy önce sunucu kodunu ve ön yüzü geçici klasörlere derler. `index.html` içindeki JS/CSS referanslarını doğruladıktan sonra `dist/` ve `public/` klasörlerini yeni sürümle değiştirir. PM2 yeniden başlatılamazsa önceki klasörleri geri yükler. Başarılı deploy sonunda eski `public/assets` dosyaları da kaldırılmış olur; çalışan sürümün assetlerini elle silmeyin.
 
-Bu deploy düzenine ilk geçişte sunucudaki eski `deploy.sh` dosyasını güncellemek için bir kez `git pull --ff-only origin main` çalıştırın; ardından `./deploy.sh` kullanın. Font seçenekleri korunur, ancak derleme yalnızca Türkçe/Latin yazı tiplerini içerir. Dosya adlarının sonundaki hash ve tek satırlı JS/CSS üretim çıktısının normal biçimidir.
+Bu deploy düzenine ilk geçişte sunucuda önce proje klasörüne girin:
+
+```bash
+cd ~/htdocs/api.guzelteknoloji.com
+git pull --ff-only origin main
+./deploy.sh
+```
+
+Sonraki güncellemelerde aynı klasörde yalnızca `./deploy.sh` çalıştırın. Font seçenekleri korunur, ancak derleme yalnızca Türkçe/Latin yazı tiplerini içerir. Dosya adlarının sonundaki hash ve tek satırlı JS/CSS üretim çıktısının normal biçimidir.

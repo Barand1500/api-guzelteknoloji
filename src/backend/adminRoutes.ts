@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { requireAuth } from "./auth.js";
 import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders, createCategory, createCategoryFolder, deleteCategory, deleteColumn, getSchema, InputError, publicData, saveSchema, updateCategory } from "./categories.js";
 import { initDatabase, pool, withTransaction } from "./database.js";
-import { databaseSchema } from "./schemaExplorer.js";
+import { databaseSchema, databaseTableRows } from "./schemaExplorer.js";
 
 export const adminRoutes = Router();
 adminRoutes.use("/admin", requireAuth);
@@ -80,6 +80,13 @@ adminRoutes.put("/admin/panel-preferences", async (request, response) => {
 
 adminRoutes.get("/admin/categories", async (_request, response) => response.json({ success: true, data: await categories() }));
 adminRoutes.get("/admin/database-schema", async (_request, response) => response.json({ success: true, data: await databaseSchema() }));
+adminRoutes.get("/admin/database-schema/:table/rows", async (request, response) => {
+  const page = Number(request.query.page || 1);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 100000) throw new InputError("Sayfa numarası geçersiz");
+  const result = await databaseTableRows(request.params.table, page);
+  if (!result) throw new InputError("Tablo bulunamadı");
+  response.json({ success: true, data: result });
+});
 adminRoutes.get("/admin/category-folders", async (_request, response) => response.json({ success: true, data: await categoryFolders() }));
 adminRoutes.post("/admin/category-folders", async (request, response) => {
   const folder = await createCategoryFolder(request.body?.name, request.body?.parentId);

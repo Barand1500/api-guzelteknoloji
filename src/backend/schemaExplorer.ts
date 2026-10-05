@@ -27,6 +27,12 @@ export async function databaseSchema() {
 
   const categoryByTable = new Map(categories.map(category => [category.tableName, category]));
   const foreignKeysByColumn = new Map(foreignKeys.map(key => [`${key.tableName}\0${key.columnName}`, key]));
+  const referencedByTable = new Map<string, ForeignKeyRow[]>();
+  for (const key of foreignKeys) {
+    const list = referencedByTable.get(key.targetTable) || [];
+    list.push(key);
+    referencedByTable.set(key.targetTable, list);
+  }
   const columnsByTable = new Map<string, typeof columns>();
   for (const column of columns) {
     const list = columnsByTable.get(column.tableName) || [];
@@ -47,6 +53,12 @@ export async function databaseSchema() {
         id: Number(categoryByTable.get(table.tableName)!.categoryId),
         name: categoryByTable.get(table.tableName)!.categoryName,
       } : null,
+      referencedBy: (referencedByTable.get(table.tableName) || []).map(key => ({
+        table: key.tableName,
+        column: key.columnName,
+        targetColumn: key.targetColumn,
+        constraint: key.constraintName,
+      })),
       columns: (columnsByTable.get(table.tableName) || []).map(column => {
         const foreignKey = foreignKeysByColumn.get(`${table.tableName}\0${column.name}`);
         return {
@@ -66,4 +78,24 @@ export async function databaseSchema() {
       }),
     })),
   };
+}
+
+export async function databaseTableRows(tableName: string, page: number) {
+  const [known] = await pool.query<RowDataPacket[]>(
+    "SELECT TABLE_NAME name FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1",
+    [tableName],
+  );
+  if (!known.length) return null;
+  const [columns] = await pool.query<RowDataPacket[]>(
+    "SELECT COLUMN_NAME name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY ORDINAL_POSITION LIMIT 1",
+    [tableName],
+  );
+  const pageSize = 25;
+  const offset = (page - 1) * pageSize;
+  const [count] = await pool.query<RowDataPacket[]>("SELECT COUNT(*) total FROM ??", [tableName]);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM ?? ${columns[0] ? "ORDER BY ??" : ""} LIMIT ? OFFSET ?`,
+    columns[0] ? [tableName, columns[0].name, pageSize, offset] : [tableName, pageSize, offset],
+  );
+  return { rows, page, pageSize, total: Number(count[0]?.total || 0) };
 }
