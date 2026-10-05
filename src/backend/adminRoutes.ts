@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { randomUUID } from "node:crypto";
 import { requireAuth } from "./auth.js";
-import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders, createCategory, createCategoryFolder, deleteCategory, deleteColumn, getSchema, InputError, publicData, relationChoices, saveSchema, updateCategory } from "./categories.js";
+import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders, createCategory, createCategoryFolder, deleteCategory, deleteColumn, getSchema, importRows, InputError, publicData, relationChoices, saveSchema, updateCategory } from "./categories.js";
 import { initDatabase, pool, withTransaction } from "./database.js";
 import { databaseSchema, databaseTableRows } from "./schemaExplorer.js";
 import { folderBundle, recordFolderUsage } from "./folderBundles.js";
@@ -108,6 +108,7 @@ adminRoutes.delete("/admin/categories/:id", async (request, response) => { await
 adminRoutes.get("/admin/categories/:id/schema", async (request, response) => response.json({ success: true, data: await getSchema(Number(request.params.id)) }));
 adminRoutes.get("/admin/categories/:id/relation-options", async (request, response) => response.json({ success: true, data: await relationChoices(Number(request.params.id)) }));
 adminRoutes.put("/admin/categories/:id/schema", async (request, response) => response.json({ success: true, data: await saveSchema(Number(request.params.id), request.body || {}) }));
+adminRoutes.post("/admin/categories/:id/import", async (request, response) => response.status(201).json({ success: true, data: { rows: await importRows(Number(request.params.id), request.body?.rows) } }));
 adminRoutes.post("/admin/categories/:id/columns", async (request, response) => response.status(201).json({ success: true, data: await addColumn(Number(request.params.id), request.body || {}) }));
 adminRoutes.delete("/admin/categories/:categoryId/columns/:columnId", async (request, response) => { await deleteColumn(Number(request.params.categoryId), Number(request.params.columnId)); response.json({ success: true }); });
 

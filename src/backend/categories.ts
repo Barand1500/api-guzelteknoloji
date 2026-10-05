@@ -315,6 +315,43 @@ export async function saveRows(categoryId: number, inputRows: any[]) {
   });
 }
 
+export async function importRows(categoryId: number, inputRows: Record<string, unknown>[]) {
+  const category = await categoryById(categoryId);
+  const fields = await columnRows(categoryId);
+  if (!Array.isArray(inputRows) || inputRows.length < 1 || inputRows.length > 5000) throw new InputError("İçe aktarılacak satır sayısı 1 ile 5.000 arasında olmalı");
+  if (Buffer.byteLength(JSON.stringify(inputRows), "utf8") > 8 * 1024 * 1024) throw new InputError("Aktarım verisi 8 MB sınırını aşıyor");
+  const allowedIds = new Set(fields.map(field => String(field.id)));
+  const normalized = inputRows.map((row, index) => {
+    if (!row || typeof row !== "object" || Array.isArray(row) || Object.keys(row).some(id => !allowedIds.has(id))) throw new InputError(`${index + 1}. satırda geçersiz sütun var`);
+    return { values: fields.map(field => dataValue(row[String(field.id)], field.field_type)) };
+  });
+  const insertedIds: string[] = [];
+  const table = identifier(category.table_name!);
+  await withTransaction(async connection => {
+    for (const item of normalized) {
+      const names = ["active", ...fields.map(field => field.sql_name!)];
+      const values = [1, ...item.values];
+      const [result] = await connection.query<any>(`INSERT INTO ${table} (${names.map(identifier).join(",")}) VALUES (${names.map(() => "?").join(",")})`, values);
+      insertedIds.push(String(result.insertId));
+    }
+  });
+  if (!insertedIds.length) return [];
+  const [rows] = await pool.query<any[]>(`SELECT * FROM ${table} WHERE id IN (${insertedIds.map(() => "?").join(",")}) ORDER BY id`, insertedIds);
+  return rows.map(row => ({
+    id: String(row.id),
+    active: Boolean(row.active),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    data: Object.fromEntries(fields.map(field => {
+      const value = row[field.sql_name!];
+      const display = field.field_type === "number" && value !== null
+        ? String(value).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")
+        : String(value);
+      return [String(field.id), value instanceof Date ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}` : value === null ? "" : display];
+    })),
+  }));
+}
+
 export async function saveSchema(categoryId: number, payload: { columns: any[]; rows: any[] }) {
   await categoryById(categoryId);
   if (!Array.isArray(payload.columns) || !Array.isArray(payload.rows)) throw new InputError("Tablo verisi geçersiz");

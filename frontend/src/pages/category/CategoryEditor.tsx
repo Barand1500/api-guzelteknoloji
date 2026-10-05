@@ -6,6 +6,7 @@ import {
   Columns3,
   Database,
   Eye,
+  FileSpreadsheet,
   ImagePlus,
   Link2,
   Plus,
@@ -17,6 +18,7 @@ import {
 import { request } from "../../shared/api";
 import type { Category, Column, Schema } from "../../shared/types";
 import FieldTypePicker, { fieldTypeLabels } from "./FieldTypePicker";
+import ImportWizard from "./ImportWizard";
 
 type SystemColumn = "id" | "created_at" | "updated_at";
 const systemColumns: { key: SystemColumn; label: string }[] = [
@@ -47,6 +49,7 @@ export default function CategoryEditor({
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
   const [confirmState, setConfirmState] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [rowQuery, setRowQuery] = useState("");
   const [rowStatus, setRowStatus] = useState<"all" | "active" | "inactive">(
     "all",
@@ -406,13 +409,22 @@ export default function CategoryEditor({
               <p>Filtreleyin, birden fazla satır seçin ve kaydedin.</p>
             </div>
           </div>
-          <button
-            className="editor-add-row"
-            onClick={addRow}
-            disabled={!schema.columns.length}
-          >
-            <Plus size={16} /> Satır ekle
-          </button>
+          <div className="editor-data-actions">
+            <button
+              className="editor-import-rows"
+              onClick={() => setImportOpen(true)}
+              disabled={!schema.columns.some(column => column.id > 0)}
+            >
+              <FileSpreadsheet size={16} /> Excel / CSV yükle
+            </button>
+            <button
+              className="editor-add-row"
+              onClick={addRow}
+              disabled={!schema.columns.length}
+            >
+              <Plus size={16} /> Satır ekle
+            </button>
+          </div>
         </div>
         <div className="editor-table-tools">
           <label className="editor-table-search">
@@ -717,6 +729,25 @@ export default function CategoryEditor({
             </div>
           </div>
         </div>
+      )}
+      {importOpen && (
+        <ImportWizard
+          token={token}
+          categoryId={category.id}
+          columns={schema.columns.filter(column => column.id > 0)}
+          relationOptions={options}
+          onClose={() => setImportOpen(false)}
+          onImported={importedRows => {
+            setSchema(current => current ? {
+              ...current,
+              rows: [...current.rows, ...importedRows.filter(row => !current.rows.some(existing => existing.id === row.id))],
+            } : current);
+            setSelectedRows(new Set());
+            setRowStatus("all");
+            setRowQuery("");
+            setRowPage(1);
+          }}
+        />
       )}
     </div>
   );
