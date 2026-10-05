@@ -32,6 +32,8 @@ export default function App() {
     [preferencesError, setPreferencesError] = useState(""),
     [tourStep, setTourStep] = useState<number | null>(null),
     [guideCategory, setGuideCategory] = useState<Category | null>(null);
+  const [openedFolderId, setOpenedFolderId] = useState<number | null>(null);
+  const [folderOpenSequence, setFolderOpenSequence] = useState(0);
 
   useEffect(() => {
     if (view !== "guide" || !token) return;
@@ -98,6 +100,7 @@ export default function App() {
     );
   const go = (v: View) => {
     setTourStep(null);
+    if (v === "new") { setOpenedFolderId(null); setFolderOpenSequence(value => value + 1); }
     setView(v);
     if (v !== "manage") setSelected(null);
   };
@@ -134,6 +137,8 @@ export default function App() {
           if (category) { setSelected(category); setView("manage"); }
         } catch { /* The destination remains unchanged when loading fails. */ }
       }}
+      openFolder={id => { setOpenedFolderId(id); setFolderOpenSequence(value => value + 1); setTourStep(null); setView("new"); }}
+      selectedCategoryId={view === "manage" ? selected?.id ?? null : null}
       logout={() => {
         localStorage.removeItem("gtk_token");
         setToken(null);
@@ -151,10 +156,10 @@ export default function App() {
             setSelected(c);
             setView("manage");
           }}
-          create={() => setView("new")}
+          create={() => go("new")}
         />
       ) : view === "new" ? (
-        <NewCategory token={token} done={() => go("dashboard")} manage={category => { setSelected(category); setView("manage"); }} />
+        <NewCategory token={token} initialFolderId={openedFolderId} openSequence={folderOpenSequence} done={() => go("dashboard")} manage={category => { setSelected(category); setView("manage"); }} />
       ) : view === "keys" ? (
         <Keys token={token} />
       ) : view === "settings" ? (

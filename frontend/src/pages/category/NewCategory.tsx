@@ -4,7 +4,7 @@ import { request } from "../../shared/api";
 import type { Category, CategoryFolder } from "../../shared/types";
 import "./new-category.css";
 
-type Props = { token: string; done: () => void; manage: (category: Category) => void };
+type Props = { token: string; done: () => void; manage: (category: Category) => void; initialFolderId?: number | null; openSequence?: number };
 type Dialog = "choose" | "folder" | "category" | null;
 
 function slugFromName(name: string) {
@@ -14,7 +14,7 @@ function slugFromName(name: string) {
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-export default function NewCategory({ token, done, manage }: Props) {
+export default function NewCategory({ token, done, manage, initialFolderId = null, openSequence = 0 }: Props) {
   const [folders, setFolders] = useState<CategoryFolder[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
@@ -37,6 +37,7 @@ export default function NewCategory({ token, done, manage }: Props) {
       ]);
       setFolders(folderList);
       setCategories(categoryList);
+      window.dispatchEvent(new Event("gtk-folder-tree-updated"));
       setCurrentFolderId(current => current === null || folderList.some(folder => folder.id === current) ? current : null);
       setError("");
     } catch (reason) {
@@ -46,6 +47,7 @@ export default function NewCategory({ token, done, manage }: Props) {
     }
   }, [token]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setCurrentFolderId(initialFolderId); }, [initialFolderId, openSequence]);
   useEffect(() => {
     if (!dialog) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) setDialog(null); };

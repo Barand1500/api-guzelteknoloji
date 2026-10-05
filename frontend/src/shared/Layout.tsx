@@ -1,7 +1,8 @@
 import gsap from "gsap";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Code2, HelpCircle, LogOut, Plus, Search } from "lucide-react";
+import { ChevronRight, Code2, FolderTree, HelpCircle, LogOut, Plus, Search } from "lucide-react";
+import FolderSidebar from "./FolderSidebar";
 import { NavIcon } from "./NavIcon";
 import { QuickAccessGhost, QuickAccessSlots, useQuickAccess } from "./QuickAccess";
 import { GlobalSearch } from "./GlobalSearch";
@@ -12,6 +13,8 @@ type Props = {
   view: View;
   setView: (view: View) => void;
   openCategory: (id: number) => void;
+  openFolder: (id: number | null) => void;
+  selectedCategoryId: number | null;
   token: string;
   logout: () => void;
   sidebarCollapsed: boolean;
@@ -41,13 +44,14 @@ const titles: Record<View, string> = {
   guide: "Rehber",
 };
 
-export default function Layout({ view, setView, openCategory, token, logout, sidebarCollapsed, toggleSidebar, preferences, savePreferences, preferencesError, children }: Props) {
+export default function Layout({ view, setView, openCategory, openFolder, selectedCategoryId, token, logout, sidebarCollapsed, toggleSidebar, preferences, savePreferences, preferencesError, children }: Props) {
   const [headerAutoHide, setHeaderAutoHide] = useState(false);
   const [footerAutoHide, setFooterAutoHide] = useState(false);
   const [headerPeek, setHeaderPeek] = useState(false);
   const [footerPeek, setFooterPeek] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [folderMode, setFolderMode] = useState(false);
   const [profileMenuPosition, setProfileMenuPosition] = useState({ top: 0, left: 0 });
   const navRef = useRef<HTMLElement>(null);
   const pillRef = useRef<HTMLDivElement>(null);
@@ -102,7 +106,13 @@ export default function Layout({ view, setView, openCategory, token, logout, sid
     const timer = window.setTimeout(place, resizing ? 340 : 0);
     window.addEventListener("resize", place);
     return () => { window.clearTimeout(timer); window.removeEventListener("resize", place); gsap.killTweensOf(pill); };
-  }, [activeView, sidebarCollapsed, preferences.sidebarOrder]);
+  }, [activeView, sidebarCollapsed, preferences.sidebarOrder, folderMode]);
+
+  useEffect(() => {
+    const panel = document.querySelector<HTMLElement>(folderMode ? ".folder-tree" : ".workspace-nav");
+    if (!panel || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    gsap.fromTo(panel, { autoAlpha: 0, x: folderMode ? 18 : -18 }, { autoAlpha: 1, x: 0, duration: 0.32, ease: "power2.out" });
+  }, [folderMode]);
 
   function onBarDoubleClick(event: MouseEvent, bar: "header" | "footer") {
     if ((event.target as HTMLElement).closest("button,input,a,select,textarea,label")) return;
@@ -121,15 +131,16 @@ export default function Layout({ view, setView, openCategory, token, logout, sid
   }
   async function signOut() { setProfileOpen(false); await playLogoutPortal(); logout(); requestAnimationFrame(() => dismissLogoutPortal()); }
 
-  return <div data-app-shell data-font-family={preferences.fontFamily} className={`workspace ${sidebarCollapsed ? "workspace-compact" : ""}`}>
+  return <div data-app-shell data-font-family={preferences.fontFamily} className={`workspace ${sidebarCollapsed && !folderMode ? "workspace-compact" : ""} ${folderMode ? "workspace-folder-mode" : ""}`}>
     <aside className="workspace-sidebar" onDoubleClick={event => { if (!(event.target as HTMLElement).closest("button,input,a")) toggleSidebar(); }} title="Boş alana çift tıkla: menüyü daralt veya genişlet">
-      <div className="workspace-brand"><span className="workspace-brand-symbol"><Code2 size={28} strokeWidth={2.5} /><b>GT</b></span>{!sidebarCollapsed && <span className="workspace-brand-copy"><strong>GÜZEL TEKNOLOJİ</strong><small>API Paneli</small></span>}</div>
+      <div className="workspace-brand"><span className="workspace-brand-symbol"><Code2 size={28} strokeWidth={2.5} /><b>GT</b></span>{(!sidebarCollapsed || folderMode) && <span className="workspace-brand-copy"><strong>GÜZEL TEKNOLOJİ</strong><small>API Paneli</small></span>}</div>
       <div className="workspace-cta-wrap"><button className="workspace-primary" onPointerDown={event => access.pointerDown(event, "new")} onPointerUp={access.cancelHold} onPointerLeave={access.cancelHold} onClick={event => access.onNavClick(event, () => openPage("new"))} title="Yeni kategori"><Plus size={18} /><span>Yeni Kategori</span></button></div>
-      <nav ref={navRef} className="workspace-nav" aria-label="Ana menü"><div ref={pillRef} className={`workspace-active-pill ${sidebarCollapsed ? "compact" : ""}`} aria-hidden />
+      {folderMode ? <FolderSidebar token={token} active={folderMode} refreshKey={view} selectedCategoryId={selectedCategoryId} onOpenFolder={openFolder} onOpenCategory={openCategory} /> : <nav ref={navRef} className="workspace-nav" aria-label="Ana menü"><div ref={pillRef} className={`workspace-active-pill ${sidebarCollapsed ? "compact" : ""}`} aria-hidden />
         {orderedPages.map(page => <button key={page.id} className={activeView === page.id ? "is-nav-active" : ""} onPointerDown={event => access.pointerDown(event, page.id)} onPointerUp={access.cancelHold} onPointerLeave={access.cancelHold} onClick={event => access.onNavClick(event, () => openPage(page.id))} title={page.label} aria-current={activeView === page.id ? "page" : undefined}><NavIcon name={page.icon} /><span>{page.label}</span></button>)}
-      </nav>
+      </nav>}
       <div className="workspace-sidebar-bottom">
         <button className={view === "guide" ? "selected" : ""} onClick={() => openPage("guide")} title="Rehber" aria-label="Rehber"><HelpCircle size={20} /></button>
+        <button className={folderMode ? "selected" : ""} onClick={() => setFolderMode(value => !value)} title={folderMode ? "Normal menüye dön" : "Klasör yapısını göster"} aria-label={folderMode ? "Normal menüye dön" : "Klasör yapısını göster"} aria-pressed={folderMode}><FolderTree size={20} /></button>
         <button className={view === "appearance" ? "selected" : ""} onClick={() => openPage("appearance")} title="Görünüm" aria-label="Görünüm"><NavIcon name="sliders" size={19} /></button>
         <button className={view === "settings" ? "selected" : ""} onClick={() => openPage("settings")} title="Ayarlar" aria-label="Ayarlar"><NavIcon name="gear" size={19} /></button>
       </div>

@@ -569,3 +569,33 @@
   .workspace-sidebar { width: 76px; min-width: 76px; }
   .workspace-content { padding: 20px 16px; }
 }
+
+/* Folder explorer replaces the regular navigation while its bottom toggle is active. */
+.workspace-folder-mode .workspace-sidebar { width: 280px; min-width: 280px; }
+.workspace-folder-mode .workspace-brand-copy { display:grid; }
+.folder-tree { display:flex; flex:1; flex-direction:column; min-height:0; overflow:hidden; }
+.folder-tree-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 18px 15px; border-bottom:1px solid var(--admin-border); }
+.folder-tree-heading>div { display:grid; gap:4px; }
+.folder-tree-heading span { color:#1f6fd8; font-size:10px; font-weight:800; letter-spacing:.1em; }
+.folder-tree-heading strong { color:#22334c; font-size:17px; }
+.folder-tree-heading button { display:grid; place-items:center; width:33px; height:33px; border:1px solid #e1e9f3; border-radius:9px; background:#fff; color:#647a94; }
+.folder-tree-heading button:hover { background:#ecf4ff; color:#1f6fd8; }
+.folder-tree-list { flex:1; overflow:auto; padding:11px 9px 18px; scrollbar-width:thin; }
+.folder-tree-branch { min-width:0; }
+.folder-tree-line { display:flex; align-items:center; gap:3px; width:100%; min-height:39px; box-sizing:border-box; border:0; border-radius:9px; background:transparent; color:#40526a; text-align:left; }
+.folder-tree-line:hover { background:#eef5ff; }
+.folder-tree-line>span,.folder-tree-item>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.folder-tree-expand { display:grid; flex:none; place-items:center; width:20px; height:28px; padding:0; border:0; background:transparent; color:#8ca0b7; }
+.folder-tree-item { display:flex; flex:1; align-items:center; gap:9px; min-width:0; min-height:35px; padding:0 7px 0 0; border:0; background:transparent; color:#30445f; text-align:left; font-size:13px; font-weight:700; }
+.folder-tree-item svg,.folder-tree-root svg { flex:none; color:#2877dc; }
+.folder-tree-root,.folder-tree-category { gap:10px; padding-right:9px; font-size:13px; font-weight:650; }
+.folder-tree-root { padding-left:16px; color:#2d5e99; }
+.folder-tree-category { cursor:pointer; }
+.folder-tree-category svg { flex:none; color:#7b9fca; }
+.folder-tree-category.selected { background:#e8f2ff; color:#1769d2; }
+.folder-tree-category.selected svg { color:#1769d2; }
+.folder-tree-category i { flex:none; width:6px; height:6px; margin-left:auto; border-radius:50%; background:#a8b5c5; }
+.folder-tree-message { margin:12px 14px; color:#71839a; font-size:13px; line-height:1.5; }
+.workspace-compact .workspace-sidebar-bottom { height:168px; }
+@media(max-width:800px) { .workspace-sidebar-bottom { height:168px; }.workspace-folder-mode .workspace-sidebar { width:min(280px,55vw); min-width:min(280px,55vw); }.workspace-folder-mode .workspace-sidebar-bottom { height:64px; flex-direction:row; }.workspace-folder-mode .workspace-primary span { display:inline; } }
+@media(prefers-reduced-motion:reduce) { .folder-tree,.workspace-nav { animation:none; } }
