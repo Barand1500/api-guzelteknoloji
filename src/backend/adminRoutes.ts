@@ -115,8 +115,8 @@ adminRoutes.get("/admin/api-keys", async (_request, response) => {
   await initDatabase();
   const [rows] = await pool.query<any[]>(`SELECT k.id,k.project_name projectName,k.api_key apiKey,k.active,k.created_at createdAt,
     k.minute_limit minuteLimit,k.month_limit monthLimit,
-    (SELECT COUNT(*) FROM api_usage_logs minute_log WHERE minute_log.api_key_id=k.id AND minute_log.created_at >= DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00')) minuteUsed,
-    (SELECT COUNT(*) FROM api_usage_logs month_log WHERE month_log.api_key_id=k.id AND month_log.created_at >= DATE_FORMAT(NOW(),'%Y-%m-01 00:00:00')) monthUsed,
+    (SELECT COUNT(*) FROM api_usage_logs minute_log WHERE minute_log.api_key_id=k.id AND minute_log.id > k.minute_reset_log_id AND minute_log.created_at >= DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00')) minuteUsed,
+    (SELECT COUNT(*) FROM api_usage_logs month_log WHERE month_log.api_key_id=k.id AND month_log.id > k.month_reset_log_id AND month_log.created_at >= DATE_FORMAT(NOW(),'%Y-%m-01 00:00:00')) monthUsed,
     COUNT(DISTINCT l.id) usageCount,COUNT(DISTINCT NULLIF(l.origin_host,'')) siteCount,
     GROUP_CONCAT(DISTINCT c.name SEPARATOR '||') categoryNames,GROUP_CONCAT(DISTINCT c.id) categoryIds,
     GROUP_CONCAT(DISTINCT f.name SEPARATOR '||') folderNames
@@ -287,6 +287,16 @@ adminRoutes.patch("/admin/api-keys/:id", async (request, response) => {
   if (!updates.length) throw new InputError("Güncellenecek alan seçin");
   const [result] = await pool.query<any>(`UPDATE api_keys SET ${updates.join(",")} WHERE id=?`, [...values, request.params.id]);
   if (!result.affectedRows) throw new InputError("API anahtarı bulunamadı", 404);
+  response.json({ success: true });
+});
+adminRoutes.post("/admin/api-keys/:id/quota-reset", async (request, response) => {
+  await initDatabase();
+  await withTransaction(async connection => {
+    const [keys] = await connection.query<any[]>("SELECT id FROM api_keys WHERE id=? FOR UPDATE", [request.params.id]);
+    if (!keys.length) throw new InputError("API anahtarı bulunamadı", 404);
+    const [logs] = await connection.query<any[]>("SELECT COALESCE(MAX(id),0) lastId FROM api_usage_logs WHERE api_key_id=?", [request.params.id]);
+    await connection.query("UPDATE api_keys SET minute_reset_log_id=?,month_reset_log_id=? WHERE id=?", [logs[0].lastId, logs[0].lastId, request.params.id]);
+  });
   response.json({ success: true });
 });
 adminRoutes.delete("/admin/api-keys/:id", async (request, response) => { await pool.query("DELETE FROM api_keys WHERE id=?", [request.params.id]); response.json({ success: true }); });

@@ -23,15 +23,15 @@ export function quotaLimit(value: unknown): number | null {
 export async function recordKeyUsage(keyId: string, target: { categoryId?: number; folderId?: number }, originHost: string) {
   await withTransaction(async connection => {
     const [keys] = await connection.query<RowDataPacket[]>(
-      "SELECT minute_limit,month_limit FROM api_keys WHERE id=? FOR UPDATE", [keyId],
+      "SELECT minute_limit,month_limit,minute_reset_log_id,month_reset_log_id FROM api_keys WHERE id=? FOR UPDATE", [keyId],
     );
     if (!keys[0]) throw new InputError("API anahtarı bulunamadı", 401);
     const [counts] = await connection.query<RowDataPacket[]>(`SELECT
-      SUM(created_at >= DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00')) minuteUsed,
-      SUM(created_at >= DATE_FORMAT(NOW(),'%Y-%m-01 00:00:00')) monthUsed,
+      SUM(id > ? AND created_at >= DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00')) minuteUsed,
+      SUM(id > ?) monthUsed,
       TIMESTAMPDIFF(SECOND,NOW(),DATE_FORMAT(DATE_ADD(NOW(),INTERVAL 1 MINUTE),'%Y-%m-%d %H:%i:00')) minuteRetry,
       TIMESTAMPDIFF(SECOND,NOW(),DATE_FORMAT(DATE_ADD(NOW(),INTERVAL 1 MONTH),'%Y-%m-01 00:00:00')) monthRetry
-      FROM api_usage_logs WHERE api_key_id=? AND created_at >= DATE_FORMAT(NOW(),'%Y-%m-01 00:00:00')`, [keyId]);
+      FROM api_usage_logs WHERE api_key_id=? AND created_at >= DATE_FORMAT(NOW(),'%Y-%m-01 00:00:00')`, [keys[0].minute_reset_log_id, keys[0].month_reset_log_id, keyId]);
     const minuteLimit = keys[0].minute_limit === null ? null : Number(keys[0].minute_limit);
     const monthLimit = keys[0].month_limit === null ? null : Number(keys[0].month_limit);
     if (minuteLimit !== null && Number(counts[0].minuteUsed || 0) >= minuteLimit) throw new QuotaError("minute", Math.max(1, Number(counts[0].minuteRetry || 60)));

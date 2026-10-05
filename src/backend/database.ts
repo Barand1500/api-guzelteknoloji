@@ -126,6 +126,7 @@ async function createMetadata() {
     id CHAR(36) PRIMARY KEY, project_name VARCHAR(160) NOT NULL,
     api_key VARCHAR(96) NOT NULL UNIQUE, active TINYINT(1) NOT NULL DEFAULT 1,
     minute_limit INT UNSIGNED NULL, month_limit INT UNSIGNED NULL,
+    minute_reset_log_id BIGINT UNSIGNED NOT NULL DEFAULT 0, month_reset_log_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_key_categories (
@@ -179,6 +180,8 @@ async function createMetadata() {
   await addMetadataColumn("api_usage_logs", "folder_id", "INT NULL");
   await addMetadataColumn("api_keys", "minute_limit", "INT UNSIGNED NULL");
   await addMetadataColumn("api_keys", "month_limit", "INT UNSIGNED NULL");
+  await addMetadataColumn("api_keys", "minute_reset_log_id", "BIGINT UNSIGNED NOT NULL DEFAULT 0");
+  await addMetadataColumn("api_keys", "month_reset_log_id", "BIGINT UNSIGNED NOT NULL DEFAULT 0");
   const [quotaIndex] = await pool.query<any[]>("SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='api_usage_logs' AND INDEX_NAME='idx_usage_key_time' LIMIT 1");
   if (!quotaIndex.length) await pool.query("ALTER TABLE api_usage_logs ADD INDEX idx_usage_key_time (api_key_id,created_at)");
   const [usageFolderConstraint] = await pool.query<any[]>(

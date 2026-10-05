@@ -98,9 +98,9 @@
 .keys-actions>button { display:grid; flex:none; place-items:center; width:31px; height:31px; border:0; border-radius:8px; background:transparent; color:#6d829a; cursor:pointer; }
 .keys-actions>button:hover { background:#eaf3ff; color:#1f6fd8; }
 .keys-actions>.keys-delete:hover { background:#fff0f2; color:#dc4255; }
-.keys-quota-cell { display:grid; gap:5px; }
-.keys-quota-part { display:flex; align-items:center; justify-content:space-between; gap:5px; min-width:0; font-size:11px; }
-.keys-quota-part b { color:#697d95; font-weight:650; }.keys-quota-part strong { color:#1d6dba; font-weight:750; white-space:nowrap; }
+.keys-quota-cell { display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+.keys-quota-part { display:inline-flex; align-items:center; justify-content:flex-start; gap:7px; max-width:100%; min-height:25px; padding:3px 8px; border:1px solid #e3eaf2; border-radius:7px; background:#f6f9fd; font-size:11px; white-space:nowrap; }
+.keys-quota-part b { color:#697d95; font-weight:650; }.keys-quota-part strong { color:#1d6dba; font-weight:750; }
 .keys-quota-part.warning strong { color:#ad710d; }.keys-quota-part.exhausted strong { color:#ce3e54; }.keys-quota-part.unlimited strong { color:#71839a; }
 .keys-quota-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .keys-quota-fields .keys-field>input { width:100%; min-height:44px; padding:0 12px; border:1px solid #d7e2ee; border-radius:10px; outline:0; background:#fff; color:#283e58; font:inherit; font-size:14px; font-weight:500; }
@@ -110,3 +110,22 @@
 .keys-quota-heading span { color:#7c8ca0; font-size:12px; }
 @media(max-width:1050px) { .keys-table { min-width:1250px; } }
 @media(max-width:520px) { .keys-quota-fields { grid-template-columns:1fr; } }
+.keys-quota-modal { width:min(590px,100%); padding:29px; }
+.keys-quota-modal h2 { margin-bottom:18px; font-size:24px; }
+.keys-quota-modal form { gap:19px; }
+.keys-quota-identity { display:grid; gap:5px; margin-bottom:15px; padding:17px 18px; border:1px solid #cfe2fa; border-radius:13px; background:#f1f7ff; }
+.keys-quota-identity>span { color:#3877bf; font-size:11px; font-weight:800; letter-spacing:.08em; }
+.keys-quota-identity strong { color:#193b65; font-size:18px; overflow-wrap:anywhere; }
+.keys-quota-identity code { color:#436385; font-size:12px; overflow-wrap:anywhere; }
+.keys-quota-current { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:22px; }
+.keys-quota-current>span { display:grid; gap:5px; padding:12px 14px; border:1px solid #e4ebf3; border-radius:11px; }
+.keys-quota-current b { color:#74869b; font-size:12px; }.keys-quota-current strong { color:#203c5e; font-size:15px; }
+.keys-quota-reset { display:flex; align-items:center; justify-content:space-between; gap:15px; padding:16px; border:1px solid #e5eaf1; border-radius:12px; background:#fafcff; }
+.keys-quota-reset>div { display:grid; gap:4px; }.keys-quota-reset strong { color:#263d58; font-size:14px; }.keys-quota-reset small { color:#71829a; font-size:12px; line-height:1.4; }
+.keys-quota-reset>button { display:inline-flex; align-items:center; justify-content:center; gap:6px; flex:none; min-height:38px; padding:0 11px; border:1px solid #b9d2ef; border-radius:9px; background:#fff; color:#2169bc; font-size:12px; font-weight:750; cursor:pointer; }
+.keys-quota-reset>button:hover { background:#eaf3ff; }
+.keys-quota-confirm { display:grid; gap:10px; padding:13px 15px; border:1px solid #edcf92; border-radius:10px; background:#fff9ec; color:#73551d; font-size:13px; }
+.keys-quota-confirm>div { display:flex; justify-content:flex-end; gap:7px; }.keys-quota-confirm button { min-height:34px; padding:0 10px; border:1px solid #dbcba9; border-radius:8px; background:#fff; color:#6e5b37; font-weight:700; cursor:pointer; }
+.keys-quota-confirm button:last-child { border-color:#c88824; background:#d99229; color:#fff; }
+.keys-quota-modal .keys-modal-actions { padding-top:18px; border-top:1px solid #e8edf4; }
+@media(max-width:520px) { .keys-quota-modal { padding:21px; }.keys-quota-current { grid-template-columns:1fr 1fr; }.keys-quota-reset { align-items:stretch; flex-direction:column; }.keys-quota-reset>button { align-self:flex-start; } }
