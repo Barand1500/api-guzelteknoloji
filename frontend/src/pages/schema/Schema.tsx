@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Database, KeyRound, Link2, RefreshCw, Search, Table2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Database, Eye, EyeOff, KeyRound, Link2, RefreshCw, Search, Table2 } from "lucide-react";
 import { request } from "../../shared/api";
 import type { DatabaseSchema, DatabaseTableRows } from "../../shared/types";
 import { Loading } from "../../shared/ui";
@@ -7,6 +7,15 @@ import "./schema.css";
 
 type Table = DatabaseSchema["tables"][number];
 type View = "data" | "columns";
+type VisibleViews = Record<View, boolean>;
+const visibilityStorageKey = "schema-visible-views";
+
+function initialVisibleViews(): VisibleViews {
+  try {
+    const saved = JSON.parse(localStorage.getItem(visibilityStorageKey) || "null");
+    return { data: saved?.data !== false, columns: saved?.columns !== false };
+  } catch { return { data: true, columns: true }; }
+}
 
 function displayValue(value: unknown): string {
   if (value === null || value === undefined) return "NULL";
@@ -18,7 +27,8 @@ export default function Schema({ token }: { token: string }) {
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
   const [selectedName, setSelectedName] = useState("");
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<View>("data");
+  const [visibleViews, setVisibleViews] = useState<VisibleViews>(initialVisibleViews);
+  const [view, setView] = useState<View>(() => initialVisibleViews().data ? "data" : "columns");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<DatabaseTableRows | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,18 +72,35 @@ export default function Schema({ token }: { token: string }) {
     setSelectedName(table.name);
     setPage(1);
     setRows(null);
-    setView("data");
+    setView(visibleViews.data ? "data" : "columns");
   }
   function followRelation(tableName: string) {
     const target = schema?.tables.find(table => table.name === tableName);
     if (target) selectTable(target);
+  }
+  function toggleViewVisibility(target: View) {
+    if (visibleViews[target] && !visibleViews[target === "data" ? "columns" : "data"]) return;
+    const next = { ...visibleViews, [target]: !visibleViews[target] };
+    localStorage.setItem(visibilityStorageKey, JSON.stringify(next));
+    setVisibleViews(next);
+    if (!next[view]) setView(target === "data" ? "columns" : "data");
   }
 
   if (loading && !schema) return <Loading />;
   return <div className="schema-page">
     <header className="schema-heading">
       <div><span className="schema-kicker">VERİTABANI GEZGİNİ</span><h1>Şema</h1></div>
-      <button className="schema-refresh" onClick={() => { void load(); setRefreshKey(value => value + 1); }} disabled={loading}><RefreshCw size={17} className={loading ? "schema-spin" : ""} /> Yenile</button>
+      <div className="schema-heading-actions">
+        <details className="schema-visibility-menu">
+          <summary title="Bölümleri göster veya gizle"><Eye size={17} /><span>Görünüm</span></summary>
+          <div className="schema-visibility-options">
+            <label><input type="checkbox" checked={visibleViews.data} onChange={() => toggleViewVisibility("data")} /><span><Eye size={15} /> Tablo içeriği</span></label>
+            <label><input type="checkbox" checked={visibleViews.columns} onChange={() => toggleViewVisibility("columns")} /><span><Eye size={15} /> Sütun yapısı</span></label>
+            {(!visibleViews.data || !visibleViews.columns) && <small><EyeOff size={13} /> Gizli bölümleri buradan yeniden açabilirsiniz.</small>}
+          </div>
+        </details>
+        <button className="schema-refresh" onClick={() => { void load(); setRefreshKey(value => value + 1); }} disabled={loading}><RefreshCw size={17} className={loading ? "schema-spin" : ""} /> Yenile</button>
+      </div>
     </header>
     {error && <div className="schema-error" role="alert">{error}</div>}
     {schema && <div className="schema-browser">
@@ -87,7 +114,7 @@ export default function Schema({ token }: { token: string }) {
       <main className="schema-main">
         {selected ? <>
           <div className="schema-main-head"><div><span className="schema-main-kind">{selected.category ? "KATEGORİ TABLOSU" : selected.kind === "VIEW" ? "GÖRÜNÜM" : "MYSQL TABLOSU"}</span><h2>{selected.name}</h2></div></div>
-          <div className="schema-tabs" role="tablist" aria-label="Tablo görünümü"><button role="tab" aria-selected={view === "data"} className={view === "data" ? "active" : ""} onClick={() => setView("data")}>Kayıtlar</button><button role="tab" aria-selected={view === "columns"} className={view === "columns" ? "active" : ""} onClick={() => setView("columns")}>Sütun yapısı</button></div>
+          <div className="schema-tabs" role="tablist" aria-label="Tablo görünümü">{visibleViews.data && <button role="tab" aria-selected={view === "data"} className={view === "data" ? "active" : ""} onClick={() => setView("data")}>Kayıtlar</button>}{visibleViews.columns && <button role="tab" aria-selected={view === "columns"} className={view === "columns" ? "active" : ""} onClick={() => setView("columns")}>Sütun yapısı</button>}</div>
           {view === "data" ? <section className="schema-content" aria-label="Tablo kayıtları">
             <div className="schema-content-title"><h3>Tablo içeriği</h3><span>{rows?.total.toLocaleString("tr-TR") ?? "—"} kayıt</span></div>
             {rowsError && <div className="schema-error" role="alert">{rowsError}</div>}
