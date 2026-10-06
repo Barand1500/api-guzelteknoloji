@@ -5,11 +5,44 @@ import type { Column, DataRow, Schema } from "../../shared/types";
 import "./import-wizard.css";
 
 type Props = { token: string; categoryId: number; columns: Column[]; relationOptions: Schema["relationOptions"]; onClose: () => void; onImported: (rows: DataRow[]) => void };
-type PreviewRow = { sourceRow: number; values: Record<string, string>; error: string };
+type PreviewRow = { sourceRow: number; values: Record<string, string>; displayValues: Record<string, string>; error: string };
 const LIMIT_ROWS = 5000;
 const LIMIT_COLUMNS = 80;
 const LIMIT_FILE_BYTES = 10 * 1024 * 1024;
 const LIMIT_REQUEST_BYTES = 8 * 1024 * 1024;
+const cp1252Decoder = new TextDecoder("windows-1252");
+const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const cp1252ByteByCharacter = new Map<string, number>();
+for (let byte = 0; byte < 256; byte++) cp1252ByteByCharacter.set(cp1252Decoder.decode(Uint8Array.of(byte)), byte);
+
+function mojibakeScore(value: string) { return (value.match(/(?:Ã.|Ä.|Å.)/g) || []).length; }
+
+function repairMojibake(value: string) {
+  let current = value;
+  for (let pass = 0; pass < 2; pass++) {
+    const score = mojibakeScore(current);
+    if (!score) break;
+    const bytes: number[] = [];
+    let convertible = true;
+    for (const character of current) {
+      const byte = cp1252ByteByCharacter.get(character);
+      if (byte === undefined) { convertible = false; break; }
+      bytes.push(byte);
+    }
+    if (!convertible) break;
+    try {
+      const decoded = utf8Decoder.decode(Uint8Array.from(bytes));
+      if (mojibakeScore(decoded) >= score) break;
+      current = decoded;
+    } catch { break; }
+  }
+  return current;
+}
+
+function normalizedLookup(value: string) {
+  return value.trim().toLocaleLowerCase("tr-TR").normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i").replace(/[^a-z0-9]/g, "");
+}
 
 function textValue(value: unknown) {
   if (value === null || value === undefined) return "";
@@ -57,18 +90,33 @@ export default function ImportWizard({ token, categoryId, columns, relationOptio
 
   const preview = useMemo<PreviewRow[]>(() => sourceRows.map((source, index) => {
     const values: Record<string, string> = {};
+    const displayValues: Record<string, string> = {};
     const issues: string[] = [];
     mapping.forEach((fieldId, sourceIndex) => {
       if (!fieldId) return;
       const column = columns.find(item => String(item.id) === fieldId);
       if (!column) return;
-      let value = textValue(source[sourceIndex]);
+      const sourceValue = repairMojibake(textValue(source[sourceIndex]));
+      let value = sourceValue;
       if ((column.fieldType === "boolean" || column.fieldType === "boolean_text") && value) value = value.toLocaleLowerCase("tr-TR");
+      let relationProblem = "";
+      if (column.fieldType === "relation" && value) {
+        const choices = relationOptions[column.referenceCategoryId || 0] || [];
+        if (!choices.some(option => option.id === value)) {
+          const normalized = normalizedLookup(value);
+          const matches = choices.filter(option => normalizedLookup(option.label) === normalized);
+          if (matches.length === 1) value = matches[0].id;
+          else relationProblem = matches.length > 1
+            ? "aynı adla birden fazla ilişkili kayıt var; ID kullanın"
+            : "ilişkili kayıt bulunamadı (ID veya kayıt adı girin)";
+        }
+      }
       values[fieldId] = value;
-      const problem = validateValue(value, column, relationOptions);
+      displayValues[fieldId] = sourceValue;
+      const problem = relationProblem || validateValue(value, column, relationOptions);
       if (problem) issues.push(`${column.name}: ${problem}`);
     });
-    return { sourceRow: index + 2, values, error: issues.join(" · ") };
+    return { sourceRow: index + 2, values, displayValues, error: issues.join(" · ") };
   }), [sourceRows, mapping, columns, relationOptions]);
   const nonempty = preview.filter(row => Object.values(row.values).some(value => value !== ""));
   const validRows = nonempty.filter(row => !row.error);
@@ -84,12 +132,12 @@ export default function ImportWizard({ token, categoryId, columns, relationOptio
     if (!/\.(xlsx|xls|csv)$/i.test(file.name)) { setError(".xlsx, .xls veya .csv dosyası seçin."); return; }
     try {
       const XLSX = await import("xlsx");
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, codepage: 1254 });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       if (!firstSheet) throw new Error("Dosyada okunabilir bir sayfa bulunamadı.");
       const matrix = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, defval: "", raw: true, blankrows: false });
       if (matrix.length < 2) throw new Error("Dosyada başlık ve en az bir veri satırı olmalı.");
-      const fileHeaders = (matrix[0] || []).map((value, index) => textValue(value) || `Sütun ${index + 1}`);
+      const fileHeaders = (matrix[0] || []).map((value, index) => repairMojibake(textValue(value)) || `Sütun ${index + 1}`);
       if (fileHeaders.length > LIMIT_COLUMNS) throw new Error(`Dosyada en fazla ${LIMIT_COLUMNS} sütun olabilir.`);
       const data = matrix.slice(1).filter(row => row.some(value => textValue(value) !== ""));
       if (data.length > LIMIT_ROWS) throw new Error(`Tek seferde en fazla ${LIMIT_ROWS.toLocaleString("tr-TR")} satır yükleyebilirsiniz.`);
@@ -137,7 +185,7 @@ export default function ImportWizard({ token, categoryId, columns, relationOptio
 
       {step === 2 && <div className="import-wizard-body"><div className="import-file-summary"><FileSpreadsheet size={19} /><div><strong>{fileName}</strong><span>{sourceRows.length.toLocaleString("tr-TR")} satır · {headers.length} sütun bulundu</span></div><button type="button" onClick={() => setStep(1)}>Dosyayı değiştir</button></div><div className="import-map-intro"><strong>Dosya başlıklarını tablo sütunlarına bağla</strong><span>Benzer adları otomatik eşleştirdik. İstersen seçimleri değiştirebilirsin.</span></div><div className="import-map-list">{headers.map((header, index) => { const selected = mapping[index]; const usedByOther = (id: string) => mapping.some((value, other) => other !== index && value === id); return <label className="import-map-row" key={`${header}-${index}`}><span className="import-map-source"><small>EXCEL SÜTUNU</small><strong>{header}</strong><em>{textValue(sourceRows[0]?.[index]) || "Örnek değer yok"}</em></span><ArrowRight size={18} /><select value={selected} onChange={event => updateMapping(index, event.target.value)} aria-label={`${header} için hedef sütun`}><option value="">Bu sütunu atla</option>{columns.map(column => <option key={column.id} value={column.id} disabled={usedByOther(String(column.id))}>{column.name} · {column.fieldType}</option>)}</select></label>; })}</div>{error && <p className="import-wizard-error" role="alert">{error}</p>}</div>}
 
-      {step === 3 && <div className="import-wizard-body">{done > 0 ? <div className="import-complete"><CheckCircle2 size={25} /><div><strong>{done.toLocaleString("tr-TR")} kayıt eklendi</strong><span>Yeni kayıtlar tabloya işlendi. Yüklemeyi kapatıp devam edebilirsin.</span></div></div> : <><div className="import-preview-summary"><span><strong>{validRows.length}</strong> içe aktarılabilir</span><span className={invalidRows.length ? "has-errors" : ""}><strong>{invalidRows.length}</strong> hatalı satır atlanacak</span><span><strong>{mappedCount}</strong> sütun eşleşti</span></div><div className="import-preview-table-wrap"><table className="import-preview-table"><thead><tr><th>Excel satırı</th>{mapping.map((id, index) => id ? <th key={`${headers[index]}-${index}`}>{columns.find(column => String(column.id) === id)?.name}</th> : null)}<th>Kontrol</th></tr></thead><tbody>{nonempty.slice(0, 8).map(row => <tr key={row.sourceRow} className={row.error ? "invalid" : "valid"}><td>{row.sourceRow}</td>{mapping.map((id, index) => id ? <td key={`${id}-${index}`}>{row.values[id] || <span className="import-empty-value">—</span>}</td> : null)}<td>{row.error ? <span className="import-row-error" title={row.error}>Hata · {row.error}</span> : <span className="import-row-valid"><Check size={14} /> Hazır</span>}</td></tr>)}</tbody></table></div>{nonempty.length > 8 && <p className="import-preview-more">İlk 8 satır gösteriliyor; toplam {nonempty.length.toLocaleString("tr-TR")} satır kontrol edildi.</p>}{invalidRows.length > 0 && <p className="import-wizard-note warning">Hatalı satırlar eklenmez. Hataları düzeltip dosyayı yeniden yükleyebilir veya geçerli satırlarla devam edebilirsin.</p>}{requestTooLarge && <p className="import-wizard-error" role="alert">Aktarım 8 MB sınırını aşıyor. Daha küçük bir dosyayla yeniden deneyin.</p>}{error && <p className="import-wizard-error" role="alert">{error}</p>}</>}</div>}
+      {step === 3 && <div className="import-wizard-body">{done > 0 ? <div className="import-complete"><CheckCircle2 size={25} /><div><strong>{done.toLocaleString("tr-TR")} kayıt eklendi</strong><span>Yeni kayıtlar tabloya işlendi. Yüklemeyi kapatıp devam edebilirsin.</span></div></div> : <><div className="import-preview-summary"><span><strong>{validRows.length}</strong> içe aktarılabilir</span><span className={invalidRows.length ? "has-errors" : ""}><strong>{invalidRows.length}</strong> hatalı satır atlanacak</span><span><strong>{mappedCount}</strong> sütun eşleşti</span></div><div className="import-preview-table-wrap"><table className="import-preview-table"><thead><tr><th>Excel satırı</th>{mapping.map((id, index) => id ? <th key={`${headers[index]}-${index}`}>{columns.find(column => String(column.id) === id)?.name}</th> : null)}<th>Kontrol</th></tr></thead><tbody>{nonempty.slice(0, 8).map(row => <tr key={row.sourceRow} className={row.error ? "invalid" : "valid"}><td>{row.sourceRow}</td>{mapping.map((id, index) => id ? <td key={`${id}-${index}`}>{row.displayValues[id] || <span className="import-empty-value">—</span>}</td> : null)}<td>{row.error ? <span className="import-row-error" title={row.error}>Hata · {row.error}</span> : <span className="import-row-valid"><Check size={14} /> Hazır</span>}</td></tr>)}</tbody></table></div>{nonempty.length > 8 && <p className="import-preview-more">İlk 8 satır gösteriliyor; toplam {nonempty.length.toLocaleString("tr-TR")} satır kontrol edildi.</p>}{invalidRows.length > 0 && <p className="import-wizard-note warning">Hatalı satırlar eklenmez. Hataları düzeltip dosyayı yeniden yükleyebilir veya geçerli satırlarla devam edebilirsin.</p>}{requestTooLarge && <p className="import-wizard-error" role="alert">Aktarım 8 MB sınırını aşıyor. Daha küçük bir dosyayla yeniden deneyin.</p>}{error && <p className="import-wizard-error" role="alert">{error}</p>}</>}</div>}
 
       <footer className="import-wizard-footer">{step === 1 ? <button className="import-cancel" type="button" onClick={onClose}>Vazgeç</button> : step === 3 && done > 0 ? <button className="import-primary" type="button" onClick={onClose}>Tamam</button> : <><button className="import-cancel" type="button" onClick={() => { setError(""); setStep(step === 3 ? 2 : 1); }}>{step === 3 ? <><ArrowLeft size={16} /> Eşleştirmeye dön</> : <><ArrowLeft size={16} /> Dosyayı değiştir</>}</button>{step === 2 ? <button className="import-primary" type="button" disabled={!mappedCount || !sourceRows.length} onClick={() => { setError(""); setStep(3); }}>Ön izlemeyi gör <ArrowRight size={16} /></button> : <button className="import-primary" type="button" disabled={!validRows.length || requestTooLarge || busy} onClick={() => void importValidRows()}>{busy ? "Kayıtlar ekleniyor…" : `${validRows.length.toLocaleString("tr-TR")} kaydı içe aktar`} <ArrowRight size={16} /></button>}</>}</footer>
     </section>
