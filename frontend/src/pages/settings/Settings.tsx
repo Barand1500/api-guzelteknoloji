@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Check, ImagePlus, LockKeyhole, Mail, RotateCcw, Save, Send, Sparkles } from "lucide-react";
 import { request } from "../../shared/api";
 import type { LoginSettings, SmtpSettings } from "../../shared/types";
+import { Logo } from "../../shared/ui";
 import "./settings.css";
 
 type Tab = "login" | "smtp";
@@ -130,26 +131,28 @@ export default function Settings({ token }: { token: string }) {
           <section className="settings-card">
             <div className="settings-card-heading"><div><h3>Karşılama görseli</h3><p>Giriş ekranının sol bölümünde gösterilir.</p></div></div>
             <div className="settings-image-layout">
-              <div className="settings-image-preview has-transparent-background">
-                <img src={draft.imageUrl} alt="Karşılama görseli ön izlemesi" />
-                <div className="settings-image-preview-tools">
-                  <button type="button" className="settings-remove-background" onClick={() => void removeBackground()} disabled={removingBackground}><Sparkles size={15} />{removingBackground ? "Temizleniyor..." : backgroundRemoved ? "Yeniden uygula" : "Arka planı sil"}</button>
-                  {backgroundRemoved && <label className="settings-tolerance"><span>Hassasiyet <strong>{backgroundTolerance}</strong></span><input type="range" min="12" max="90" value={backgroundTolerance} onChange={event => setBackgroundTolerance(Number(event.target.value))} aria-label="Arka plan temizleme hassasiyeti" /><button type="button" onClick={() => void removeBackground()} disabled={removingBackground}>Uygula</button></label>}
-                </div>
-              </div>
               <div className="settings-login-preview" aria-label="Giriş ekranı ön izlemesi">
-                <div className="settings-login-preview-art"><span>GT</span><img src={draft.imageUrl} alt="" /></div>
+                <div className="settings-login-preview-art"><div className="settings-preview-glow" /><img src={draft.imageUrl} alt="Karşılama görseli" /></div>
                 <div className="settings-login-preview-form">
-                  <div className="settings-login-preview-brand"><b>Güzel Teknoloji</b><small>Yönetim Merkezi</small></div>
+                  <small className="settings-preview-label">GİRİŞ EKRANI ÖN İZLEMESİ</small>
+                  <div className="settings-login-preview-brand"><Logo /><small>Yönetim Merkezi</small></div>
                   <h4>Hoş geldiniz</h4><p>E-posta adresinizi yazın ve giriş yönteminizi seçin.</p>
                   <div className="settings-login-preview-input">E-posta</div>
                   {draft.quickLoginEnabled && <div className="settings-login-preview-primary">Hızlı Giriş</div>}
                   <div className="settings-login-preview-secondary">Giriş Yap</div>
                 </div>
               </div>
+              <aside className="settings-image-tools">
+                <div className="settings-image-tools-heading"><h4>Görsel işlemleri</h4><span>PNG, JPEG veya WebP · en fazla 1,3 MB</span></div>
+                <label className="settings-button settings-button-primary settings-image-upload" htmlFor="login-image"><ImagePlus size={16} /> Yeni görsel seç</label>
+                <input id="login-image" className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseImage} />
+                <button type="button" className="settings-button settings-reset-button settings-image-reset" onClick={() => { setDraft(current => current ? { ...current, imageUrl: "/login-character.jpg" } : current); setBackgroundOriginal("/login-character.jpg"); setBackgroundRemoved(false); setBackgroundTolerance(38); setBackgroundError(""); setError(""); setSaved(false); }}><RotateCcw size={16} /> Varsayılan görseli kullan</button>
+                <div className="settings-background-tool"><div><strong>Arka planı kaldır</strong><p>Düz renkli fonlarda daha iyi sonuç verir.</p></div><button type="button" className="settings-remove-background" onClick={() => void removeBackground()} disabled={removingBackground}><Sparkles size={15} />{removingBackground ? "İşleniyor..." : backgroundRemoved ? "Tekrar uygula" : "Kaldır"}</button></div>
+                {backgroundRemoved && <label className="settings-tolerance"><span>Hassasiyet <strong>{backgroundTolerance}</strong></span><input type="range" min="12" max="90" value={backgroundTolerance} onChange={event => setBackgroundTolerance(Number(event.target.value))} aria-label="Arka plan temizleme hassasiyeti" /><button type="button" onClick={() => void removeBackground()} disabled={removingBackground}>Uygula</button></label>}
+                {backgroundError && <span className="settings-error" role="alert">{backgroundError}</span>}
+                <p className="settings-image-hint"><Sparkles size={14} /> Temizleme ön izlemede görünür. Kaydettiğinizde giriş ekranına uygulanır.</p>
+              </aside>
             </div>
-            <div className="settings-image-actions"><div><strong>Görseli özelleştir</strong><p>PNG, JPEG veya WebP yükleyin. Ön izleme giriş ekranındaki görünümü gösterir.</p></div><div className="settings-image-action-buttons"><label className="settings-button settings-button-primary" htmlFor="login-image"><ImagePlus size={16} /> Görsel yükle</label><input id="login-image" className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseImage} /><button type="button" className="settings-button settings-reset-button" onClick={() => { setDraft(current => current ? { ...current, imageUrl: "/login-character.jpg" } : current); setBackgroundOriginal("/login-character.jpg"); setBackgroundRemoved(false); setBackgroundTolerance(38); setBackgroundError(""); setError(""); setSaved(false); }}><RotateCcw size={16} /> Varsayılan görseli kullan</button></div><small>En fazla 1,3 MB · Önerilen oran 4:5</small>{backgroundError && <span className="settings-error" role="alert">{backgroundError}</span>}</div>
-            <p className="settings-image-hint"><Sparkles size={14} /> Arka plan temizleme düz renkli alanlarda iyi sonuç verir. Şeffaflığı dama deseninde görebilirsiniz.</p>
           </section>
           <section className="settings-card"><div className="settings-card-heading"><div><h3>Giriş yöntemleri</h3><p>Yöneticinin kullanabileceği oturum açma seçenekleri.</p></div></div><div className="settings-method-row"><div><strong>E-posta koduyla hızlı giriş</strong><p>Tek kullanımlık doğrulama kodunu yönetici e-postasına gönderir.</p></div><button type="button" role="switch" aria-checked={draft.quickLoginEnabled} aria-label="E-posta koduyla hızlı girişi aç veya kapat" className={`settings-switch ${draft.quickLoginEnabled ? "on" : ""}`} onClick={() => { setDraft(current => current ? { ...current, quickLoginEnabled: !current.quickLoginEnabled } : current); setSaved(false); }}><span /></button></div><div className="settings-method-note"><Check size={16} /> Şifreyle giriş her zaman kullanılabilir.</div></section>
           <div className="settings-save"><div role="status">{error ? <span className="settings-error">{error}</span> : saved ? <span className="settings-success"><Check size={16} /> Ayarlar kaydedildi.</span> : <span>Değişiklikler kaydettikten sonra giriş ekranına uygulanır.</span>}</div><button className="settings-button settings-button-primary" disabled={saving}><Save size={16} /> {saving ? "Kaydediliyor..." : "Değişiklikleri kaydet"}</button></div>
