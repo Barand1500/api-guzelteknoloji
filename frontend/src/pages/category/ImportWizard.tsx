@@ -169,7 +169,11 @@ export default function ImportWizard({ token, categoryId, columns, relationOptio
     if (!/\.(xlsx|xls|csv)$/i.test(file.name)) { setError(".xlsx, .xls veya .csv dosyası seçin."); return; }
     try {
       const XLSX = await import("xlsx");
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, codepage: 1254 });
+      const workbook = XLSX.read(await file.arrayBuffer(), {
+        type: "array",
+        cellDates: true,
+        ...(file.name.toLocaleLowerCase("en-US").endsWith(".csv") ? { codepage: 65001 } : {}),
+      });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       if (!firstSheet) throw new Error("Dosyada okunabilir bir sayfa bulunamadı.");
       const matrix = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, { header: 1, defval: "", raw: true, blankrows: false });
