@@ -31,6 +31,14 @@ async function hasColumn(table: string, column: string) {
   return rows.length > 0;
 }
 
+async function hasTable(table: string) {
+  const [rows] = await pool.query<any[]>(
+    "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1",
+    [table],
+  );
+  return rows.length > 0;
+}
+
 async function addMetadataColumn(table: string, column: string, definition: string) {
   if (!await hasColumn(table, column)) await pool.query(`ALTER TABLE ${identifier(table)} ADD COLUMN ${identifier(column)} ${definition}`);
 }
@@ -109,18 +117,6 @@ async function createMetadata() {
     field_type VARCHAR(24) NOT NULL DEFAULT 'text', position INT NOT NULL DEFAULT 0,
     UNIQUE KEY uq_category_column (category_id,name),
     CONSTRAINT fk_api_column_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS api_category_rows (
-    id CHAR(36) PRIMARY KEY, category_id INT NOT NULL, data JSON NOT NULL,
-    active TINYINT(1) NOT NULL DEFAULT 1,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_api_row_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS api_records (
-    id CHAR(36) PRIMARY KEY, category_id INT NOT NULL, name VARCHAR(180) NOT NULL,
-    value LONGTEXT NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    CONSTRAINT fk_api_record_category FOREIGN KEY (category_id) REFERENCES api_categories(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   await pool.query(`CREATE TABLE IF NOT EXISTS api_keys (
     id CHAR(36) PRIMARY KEY, project_name VARCHAR(160) NOT NULL,
@@ -226,7 +222,9 @@ async function migrateLegacyData() {
   if (!migrationRows.length) for (const category of categories) {
     const table = tables.get(category.id)!;
     const fields = columns.filter(column => column.category_id === category.id);
-    const [legacyRows] = await pool.query<any[]>("SELECT id,data,active,updated_at FROM api_category_rows WHERE category_id=?", [category.id]);
+    const [legacyRows] = await hasTable("api_category_rows")
+      ? await pool.query<any[]>("SELECT id,data,active,updated_at FROM api_category_rows WHERE category_id=?", [category.id])
+      : [[] as any[]];
     for (const legacy of legacyRows) {
       const data = typeof legacy.data === "string" ? JSON.parse(legacy.data) : legacy.data;
       const names = ["id", "active", "created_at", "updated_at", ...fields.map(field => field.sql_name!)];
@@ -338,6 +336,20 @@ async function removeRowOrder() {
   await pool.query("INSERT IGNORE INTO api_migration_state(name) VALUES ('row_order_removed_v4')");
 }
 
+async function removeRetiredTables() {
+  const [states] = await pool.query<any[]>(
+    "SELECT name FROM api_migration_state WHERE name IN ('physical_categories_v1','readable_tables_v2','retired_tables_removed_v1')",
+  );
+  const completed = new Set(states.map(row => row.name));
+  // Keep the JSON source until it has passed through both category data migrations.
+  if (!completed.has("physical_categories_v1") || !completed.has("readable_tables_v2") || completed.has("retired_tables_removed_v1")) return;
+
+  for (const table of ["api_category_rows", "api_records", "api_media"]) {
+    if (await hasTable(table)) await pool.query(`DROP TABLE ${identifier(table)}`);
+  }
+  await pool.query("INSERT IGNORE INTO api_migration_state(name) VALUES ('retired_tables_removed_v1')");
+}
+
 let initialization: Promise<void> | null = null;
 export async function initDatabase() {
   if (!initialization) initialization = (async () => {
@@ -346,6 +358,7 @@ export async function initDatabase() {
     if (!done.length) { await migrateLegacyData(); await migrateReadableTables(); }
     await removeMigrationColumns();
     await removeRowOrder();
+    await removeRetiredTables();
   })().catch(error => { initialization = null; throw error; });
   await initialization;
 }

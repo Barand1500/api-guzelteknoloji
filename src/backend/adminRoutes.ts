@@ -302,19 +302,3 @@ adminRoutes.post("/admin/api-keys/:id/quota-reset", async (request, response) =>
   response.json({ success: true });
 });
 adminRoutes.delete("/admin/api-keys/:id", async (request, response) => { await pool.query("DELETE FROM api_keys WHERE id=?", [request.params.id]); response.json({ success: true }); });
-
-adminRoutes.get("/admin/records", async (_request, response) => {
-  await initDatabase();
-  const [rows] = await pool.query<any[]>("SELECT id,category_id categoryId,name,value,active,updated_at updatedAt FROM api_records ORDER BY updated_at DESC");
-  response.json({ success: true, data: rows.map(row => ({ ...row, active: Boolean(row.active) })) });
-});
-adminRoutes.post("/admin/records", async (request, response) => {
-  await initDatabase();
-  const name = String(request.body?.name || "").trim(), value = String(request.body?.value || "").trim();
-  const categoryId = Number(request.body?.categoryId);
-  if (!name || !value || !Number.isSafeInteger(categoryId)) throw new InputError("Ad, değer ve kategori gerekli");
-  await categoryById(categoryId);
-  const id = randomUUID();
-  await pool.query("INSERT INTO api_records(id,category_id,name,value,active) VALUES(?,?,?,?,?)", [id, categoryId, name, value, request.body?.active === false ? 0 : 1]);
-  response.status(201).json({ success: true, data: { id, categoryId, name, value, active: request.body?.active !== false } });
-});

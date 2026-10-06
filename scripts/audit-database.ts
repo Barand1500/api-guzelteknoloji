@@ -46,7 +46,7 @@ async function audit() {
       category = migrations.has("readable_tables_v2") && !liveCategoryTables.has(tableName)
         ? "Eski fiziksel kategori tablosu olabilir — canlı tabloyla veri karşılaştırması ve yedek onayı gerekir"
         : "Kategori migrasyonunda kullanılabilir — silmeyin";
-    } else if (["api_categories", "api_category_folders", "api_category_folder_closure", "api_key_folders", "api_keys", "api_key_categories", "api_usage_logs", "api_settings", "api_login_settings", "api_smtp_settings", "api_panel_preferences", "api_records"].includes(tableName)) {
+    } else if (["api_categories", "api_category_folders", "api_category_folder_closure", "api_key_folders", "api_keys", "api_key_categories", "api_usage_logs", "api_settings", "api_login_settings", "api_smtp_settings", "api_panel_preferences"].includes(tableName)) {
       category = "Aktif uygulama tablosu — silmeyin";
     }
     reports.push({ table: tableName, rows, category, referencedBy });

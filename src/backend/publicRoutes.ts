@@ -48,10 +48,6 @@ publicRoutes.get("/health", async (_request, response) => {
   const [rows] = await pool.query<any[]>("SELECT value FROM api_settings WHERE id=1");
   response.json({ success: true, enabled: rows[0]?.value !== "0", service: "guzel-teknoloji-api" });
 });
-publicRoutes.get("/api/records", serviceEnabled, async (_request, response) => {
-  const [rows] = await pool.query<any[]>("SELECT id,category_id categoryId,name,value,active,updated_at updatedAt FROM api_records WHERE active=1 ORDER BY updated_at DESC");
-  response.json({ success: true, data: rows.map(row => ({ ...row, active: true })) });
-});
 publicRoutes.get("/api/categories/:slug", serviceEnabled, serveCategory);
 publicRoutes.get("/v1/:slug", serviceEnabled, serveCategory);
 async function serveFolder(request: Request, response: Response) {
