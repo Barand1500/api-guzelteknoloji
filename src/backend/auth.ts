@@ -145,18 +145,20 @@ async function writeSmtpSettings(input: Partial<SmtpSettings>): Promise<PublicSm
   return (await readSmtpSettings()).publicSettings;
 }
 
-async function sendSmtpTest() {
+async function sendSmtpTest(recipient: string) {
+  const to = String(recipient || "").trim().toLowerCase();
+  if (to.length > 255 || !/^\S+@\S+\.\S+$/.test(to)) throw new InputError("Geçerli bir alıcı e-posta adresi girin");
   const { settings } = await readSmtpSettings();
   if (!settings.host || !settings.user || !settings.password) throw new InputError("Önce geçerli SMTP bilgilerini kaydedin");
   const transport = smtpTransport(settings);
   await transport.verify();
   await transport.sendMail({
     from: settings.from,
-    to: adminEmail,
+    to,
     subject: "Güzel Teknoloji SMTP test mesajı",
     text: "SMTP ayarlarınız başarıyla doğrulandı.",
   });
-  return { sentTo: adminEmail };
+  return { sentTo: to };
 }
 
 export const authRoutes = Router();
@@ -171,7 +173,7 @@ authRoutes.get("/admin/login-settings", requireAuth, async (_request, response) 
 authRoutes.patch("/admin/login-settings", requireAuth, async (request, response) => response.json({ success: true, data: await writeLoginSettings(request.body || {}) }));
 authRoutes.get("/admin/smtp-settings", requireAuth, async (_request, response) => response.json({ success: true, data: (await readSmtpSettings()).publicSettings }));
 authRoutes.patch("/admin/smtp-settings", requireAuth, async (request, response) => response.json({ success: true, data: await writeSmtpSettings(request.body || {}) }));
-authRoutes.post("/admin/smtp-settings/test", requireAuth, async (_request, response) => response.json({ success: true, data: await sendSmtpTest() }));
+authRoutes.post("/admin/smtp-settings/test", requireAuth, async (request, response) => response.json({ success: true, data: await sendSmtpTest(request.body?.to) }));
 
 authRoutes.post("/auth/request-otp", async (request, response) => {
   if (!(await readLoginSettings()).quickLoginEnabled) return response.status(403).json({ success: false, message: "Hızlı giriş kapalı" });

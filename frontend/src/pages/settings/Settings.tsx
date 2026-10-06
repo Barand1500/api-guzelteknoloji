@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
-import { Check, ImagePlus, RotateCcw, Save, Send, Sparkles } from "lucide-react";
+import { Check, ImagePlus, LockKeyhole, Mail, RotateCcw, Save, Send, Sparkles } from "lucide-react";
 import { request } from "../../shared/api";
 import type { LoginSettings, SmtpSettings } from "../../shared/types";
 import "./settings.css";
@@ -12,6 +12,7 @@ export default function Settings({ token }: { token: string }) {
   const [draft, setDraft] = useState<LoginSettings | null>(null);
   const [smtpDraft, setSmtpDraft] = useState<SmtpDraft | null>(null);
   const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpTestAddress, setSmtpTestAddress] = useState("");
   const [smtpPasswordConfigured, setSmtpPasswordConfigured] = useState(false);
   const [encryptionKeyConfigured, setEncryptionKeyConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,7 +50,7 @@ export default function Settings({ token }: { token: string }) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file || !draft) return;
-    if (!(["image/jpeg", "image/png", "image/webp"].includes(file.type))) { setError("PNG, JPEG veya WebP görsel seçin."); return; }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) { setError("PNG, JPEG veya WebP görsel seçin."); return; }
     if (file.size > 15 * 1024 * 1024) { setError("Görsel dosyası en fazla 15 MB olabilir."); return; }
     try {
       setError(""); setBackgroundError(""); setSaved(false); setBackgroundRemoved(false);
@@ -81,8 +82,12 @@ export default function Settings({ token }: { token: string }) {
     finally { setSaving(false); }
   }
 
-  async function saveSmtp(sendTest: boolean) {
+  async function saveSmtp(sendTest = false) {
     if (!smtpDraft || smtpSaving || smtpTesting) return;
+    if (sendTest && !/^\S+@\S+\.\S+$/.test(smtpTestAddress.trim())) {
+      setSmtpError("Test e-postası için geçerli bir alıcı adresi girin.");
+      return;
+    }
     setSmtpSaving(true); setSmtpError(""); setSmtpSaved(false); setSmtpTested(false);
     try {
       const result = await request<SmtpSettings>("/admin/smtp-settings", token, {
@@ -98,7 +103,9 @@ export default function Settings({ token }: { token: string }) {
       if (sendTest) {
         setSmtpSaving(false);
         setSmtpTesting(true);
-        const test = await request<{ sentTo: string }>("/admin/smtp-settings/test", token, { method: "POST" });
+        const test = await request<{ sentTo: string }>("/admin/smtp-settings/test", token, {
+          method: "POST", body: JSON.stringify({ to: smtpTestAddress.trim() }),
+        });
         setSmtpError(`Test e-postası ${test.sentTo} adresine gönderildi.`);
         setSmtpTested(true);
       }
@@ -115,29 +122,56 @@ export default function Settings({ token }: { token: string }) {
     <div className="settings-layout">
       <nav className="settings-tabs" aria-label="Ayar bölümleri">
         <span className="settings-tabs-caption">BÖLÜMLER</span>
-        <button className={tab === "login" ? "active" : ""} onClick={() => setTab("login")} aria-current={tab === "login" ? "page" : undefined}><span>Giriş ve Güvenlik</span></button>
-        <button className={tab === "smtp" ? "active" : ""} onClick={() => setTab("smtp")} aria-current={tab === "smtp" ? "page" : undefined}><span>E-posta/SMTP Ayarları</span></button>
+        <button className={tab === "login" ? "active" : ""} onClick={() => setTab("login")} aria-current={tab === "login" ? "page" : undefined}><LockKeyhole size={18} /><span>Giriş ve Güvenlik</span></button>
+        <button className={tab === "smtp" ? "active" : ""} onClick={() => setTab("smtp")} aria-current={tab === "smtp" ? "page" : undefined}><Mail size={18} /><span>E-posta/SMTP Ayarları</span></button>
       </nav>
       {tab === "login" ? <form className="settings-content" onSubmit={saveLogin}>
         {!draft ? <div className="settings-loading">{error || "Ayarlar yükleniyor..."}</div> : <>
-          <section className="settings-card"><div className="settings-card-heading"><div><h3>Karşılama görseli</h3><p>Giriş ekranının sol bölümünde gösterilir.</p></div></div><div className="settings-image-layout"><div className="settings-image-preview has-transparent-background"><img src={draft.imageUrl} alt="Giriş ekranı görseli önizlemesi" /><div className="settings-image-preview-tools"><button type="button" className="settings-remove-background" onClick={() => void removeBackground()} disabled={removingBackground}><Sparkles size={15} />{removingBackground ? "Temizleniyor..." : backgroundRemoved ? "Yeniden uygula" : "Arka planı sil"}</button>{backgroundRemoved && <label className="settings-tolerance"><span>Hassasiyet <strong>{backgroundTolerance}</strong></span><input type="range" min="12" max="90" value={backgroundTolerance} onChange={event => setBackgroundTolerance(Number(event.target.value))} aria-label="Arka plan temizleme hassasiyeti" /><button type="button" onClick={() => void removeBackground()} disabled={removingBackground}>Uygula</button></label>}</div></div><div className="settings-image-actions"><strong>Görseli özelleştir</strong><p>PNG, JPEG veya WebP seçin. Görseliniz tarayıcıda küçültülür ve ayarları kaydedince saklanır.</p><div><label className="settings-button settings-button-primary" htmlFor="login-image"><ImagePlus size={16} /> Görsel yükle</label><input id="login-image" className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseImage} /><button type="button" className="settings-button settings-reset-button" onClick={() => { setDraft(current => current ? { ...current, imageUrl: "/login-character.jpg" } : current); setBackgroundOriginal("/login-character.jpg"); setBackgroundRemoved(false); setBackgroundTolerance(38); setBackgroundError(""); setError(""); setSaved(false); }}><RotateCcw size={16} /> Varsayılan görseli kullan</button></div><small>En fazla 1,3 MB · Önerilen oran 4:5</small>{backgroundError && <span className="settings-error" role="alert">{backgroundError}</span>}</div></div><p className="settings-image-hint"><Sparkles size={14} /> Arka plan temizleme aracı düz renkli arka planlarda en iyi sonucu verir. Şeffaflık ön izlemede dama deseniyle gösterilir.</p></section>
+          <section className="settings-card">
+            <div className="settings-card-heading"><div><h3>Karşılama görseli</h3><p>Giriş ekranının sol bölümünde gösterilir.</p></div></div>
+            <div className="settings-image-layout">
+              <div className="settings-image-preview has-transparent-background">
+                <img src={draft.imageUrl} alt="Karşılama görseli ön izlemesi" />
+                <div className="settings-image-preview-tools">
+                  <button type="button" className="settings-remove-background" onClick={() => void removeBackground()} disabled={removingBackground}><Sparkles size={15} />{removingBackground ? "Temizleniyor..." : backgroundRemoved ? "Yeniden uygula" : "Arka planı sil"}</button>
+                  {backgroundRemoved && <label className="settings-tolerance"><span>Hassasiyet <strong>{backgroundTolerance}</strong></span><input type="range" min="12" max="90" value={backgroundTolerance} onChange={event => setBackgroundTolerance(Number(event.target.value))} aria-label="Arka plan temizleme hassasiyeti" /><button type="button" onClick={() => void removeBackground()} disabled={removingBackground}>Uygula</button></label>}
+                </div>
+              </div>
+              <div className="settings-login-preview" aria-label="Giriş ekranı ön izlemesi">
+                <div className="settings-login-preview-art"><span>GT</span><img src={draft.imageUrl} alt="" /></div>
+                <div className="settings-login-preview-form">
+                  <div className="settings-login-preview-brand"><b>Güzel Teknoloji</b><small>Yönetim Merkezi</small></div>
+                  <h4>Hoş geldiniz</h4><p>E-posta adresinizi yazın ve giriş yönteminizi seçin.</p>
+                  <div className="settings-login-preview-input">E-posta</div>
+                  {draft.quickLoginEnabled && <div className="settings-login-preview-primary">Hızlı Giriş</div>}
+                  <div className="settings-login-preview-secondary">Giriş Yap</div>
+                </div>
+              </div>
+            </div>
+            <div className="settings-image-actions"><div><strong>Görseli özelleştir</strong><p>PNG, JPEG veya WebP yükleyin. Ön izleme giriş ekranındaki görünümü gösterir.</p></div><div className="settings-image-action-buttons"><label className="settings-button settings-button-primary" htmlFor="login-image"><ImagePlus size={16} /> Görsel yükle</label><input id="login-image" className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp" onChange={chooseImage} /><button type="button" className="settings-button settings-reset-button" onClick={() => { setDraft(current => current ? { ...current, imageUrl: "/login-character.jpg" } : current); setBackgroundOriginal("/login-character.jpg"); setBackgroundRemoved(false); setBackgroundTolerance(38); setBackgroundError(""); setError(""); setSaved(false); }}><RotateCcw size={16} /> Varsayılan görseli kullan</button></div><small>En fazla 1,3 MB · Önerilen oran 4:5</small>{backgroundError && <span className="settings-error" role="alert">{backgroundError}</span>}</div>
+            <p className="settings-image-hint"><Sparkles size={14} /> Arka plan temizleme düz renkli alanlarda iyi sonuç verir. Şeffaflığı dama deseninde görebilirsiniz.</p>
+          </section>
           <section className="settings-card"><div className="settings-card-heading"><div><h3>Giriş yöntemleri</h3><p>Yöneticinin kullanabileceği oturum açma seçenekleri.</p></div></div><div className="settings-method-row"><div><strong>E-posta koduyla hızlı giriş</strong><p>Tek kullanımlık doğrulama kodunu yönetici e-postasına gönderir.</p></div><button type="button" role="switch" aria-checked={draft.quickLoginEnabled} aria-label="E-posta koduyla hızlı girişi aç veya kapat" className={`settings-switch ${draft.quickLoginEnabled ? "on" : ""}`} onClick={() => { setDraft(current => current ? { ...current, quickLoginEnabled: !current.quickLoginEnabled } : current); setSaved(false); }}><span /></button></div><div className="settings-method-note"><Check size={16} /> Şifreyle giriş her zaman kullanılabilir.</div></section>
           <div className="settings-save"><div role="status">{error ? <span className="settings-error">{error}</span> : saved ? <span className="settings-success"><Check size={16} /> Ayarlar kaydedildi.</span> : <span>Değişiklikler kaydettikten sonra giriş ekranına uygulanır.</span>}</div><button className="settings-button settings-button-primary" disabled={saving}><Save size={16} /> {saving ? "Kaydediliyor..." : "Değişiklikleri kaydet"}</button></div>
         </>}
-      </form> : <form className="settings-content smtp-settings" onSubmit={event => { event.preventDefault(); void saveSmtp(false); }}>
+      </form> : <form className="settings-content smtp-settings" onSubmit={event => { event.preventDefault(); void saveSmtp(); }}>
         {!smtpDraft ? <div className="settings-loading">{smtpError || "SMTP ayarları yükleniyor..."}</div> : <>
-          <section className="settings-card smtp-form-card"><div className="smtp-card-heading"><div><h2>Sunucu bağlantısı</h2></div><span className={`smtp-connection-state ${smtpPasswordConfigured ? "configured" : "needs-setup"}`}><i />{smtpPasswordConfigured ? "Şifre kayıtlı" : "Kurulum gerekli"}</span></div>
+          <section className="settings-card smtp-form-card">
+            <div className="smtp-card-heading"><div><h2>Sunucu bağlantısı</h2></div><span className={`smtp-connection-state ${smtpPasswordConfigured ? "configured" : "needs-setup"}`}><i />{smtpPasswordConfigured ? "Şifre kayıtlı" : "Kurulum gerekli"}</span></div>
             <div className="smtp-form-grid">
               <label>SMTP sunucusu<input required maxLength={255} value={smtpDraft.host} onChange={event => { setSmtpDraft({ ...smtpDraft, host: event.target.value }); setSmtpSaved(false); setSmtpTested(false); }} placeholder="smtp.example.com" /><small>E-posta sağlayıcınızın SMTP adresi.</small></label>
               <label>Bağlantı portu<input required type="number" min="1" max="65535" value={smtpDraft.port} onChange={event => { setSmtpDraft({ ...smtpDraft, port: Number(event.target.value) }); setSmtpSaved(false); setSmtpTested(false); }} placeholder="587" /><small>Sağlayıcınızın verdiği port numarası.</small></label>
               <label>Kullanıcı adı / e-posta<input required maxLength={255} autoComplete="off" value={smtpDraft.user} onChange={event => { setSmtpDraft({ ...smtpDraft, user: event.target.value }); setSmtpSaved(false); setSmtpTested(false); }} placeholder="bildirim@example.com" /><small>SMTP hesabına girişte kullanılan adres.</small></label>
-              <label>Gönderen adı ve adresi<input required maxLength={255} value={smtpDraft.from} onChange={event => { setSmtpDraft({ ...smtpDraft, from: event.target.value }); setSmtpSaved(false); setSmtpTested(false); }} placeholder={'Destek <mail@example.com>'} /><small>E-postaların alıcılara göstereceği gönderen bilgisi.</small></label>
-              <label className="smtp-password-field">SMTP şifresi<input type="password" autoComplete="new-password" value={smtpPassword} onChange={event => { setSmtpPassword(event.target.value); setSmtpSaved(false); setSmtpTested(false); }} placeholder={smtpPasswordConfigured ? "Kayıtlı şifreyi korumak için boş bırakın" : "SMTP uygulama şifresi"} /><small>{smtpPasswordConfigured ? "Kayıtlı şifre güvenlik nedeniyle gösterilmez. Değiştirmek için yeni şifre girin." : "SMTP sağlayıcınızın şifresini veya uygulama parolasını girin."}</small></label>
-              <label className="smtp-secure-option"><input type="checkbox" checked={smtpDraft.secure} onChange={event => { setSmtpDraft({ ...smtpDraft, secure: event.target.checked }); setSmtpSaved(false); setSmtpTested(false); }} /><span><strong>Doğrudan TLS kullan</strong><small>465 gibi TLS portlarında açın. 587 / STARTTLS için kapalı bırakın.</small></span></label>
+              <label>Gönderen adı ve adresi<input required maxLength={255} value={smtpDraft.from} onChange={event => { setSmtpDraft({ ...smtpDraft, from: event.target.value }); setSmtpSaved(false); setSmtpTested(false); }} placeholder={'Destek <mail@example.com>'} /><small>Alıcılara gösterilecek gönderen bilgisi.</small></label>
+              <label className="smtp-password-field">SMTP şifresi<input type="password" autoComplete="new-password" value={smtpPassword} onChange={event => { setSmtpPassword(event.target.value); setSmtpSaved(false); setSmtpTested(false); }} placeholder={smtpPasswordConfigured ? "Kayıtlı şifreyi korumak için boş bırakın" : "SMTP uygulama şifresi"} /><small>{smtpPasswordConfigured ? "Kayıtlı şifre gösterilmez. Değiştirmek için yeni şifre girin." : "SMTP sağlayıcınızın şifresini veya uygulama parolasını girin."}</small></label>
+              <fieldset className="smtp-security-choices"><legend>Şifreli bağlantı türü</legend><div>
+                <label className={smtpDraft.secure ? "selected" : ""}><input type="radio" name="smtp-security" checked={smtpDraft.secure} onChange={() => { setSmtpDraft({ ...smtpDraft, secure: true }); setSmtpSaved(false); setSmtpTested(false); }} /><span><strong>SSL / doğrudan TLS</strong><small>TLS bağlantısı baştan kurulur · genellikle 465</small></span></label>
+                <label className={!smtpDraft.secure ? "selected" : ""}><input type="radio" name="smtp-security" checked={!smtpDraft.secure} onChange={() => { setSmtpDraft({ ...smtpDraft, secure: false }); setSmtpSaved(false); setSmtpTested(false); }} /><span><strong>STARTTLS</strong><small>Bağlantı TLS'e yükseltilir · genellikle 587</small></span></label>
+              </div></fieldset>
             </div>
           </section>
-          <section className="settings-card smtp-security-note"><div><strong>Şifre güvenliği</strong><p>SMTP şifresi veritabanında AES-256-GCM ile şifreli saklanır. Sunucudaki şifreleme anahtarı durumu: <b>{encryptionKeyConfigured ? "Hazır" : "Yapılandırılmamış"}</b>. {encryptionKeyConfigured ? "" : "Yeni bir SMTP şifresi kaydetmeden önce SMTP_SETTINGS_ENCRYPTION_KEY ayarlanmalıdır."}</p></div></section>
-          <div className="settings-save smtp-save"><div role="status">{smtpError ? <span className={smtpTested ? "settings-success" : "settings-error"}>{smtpTested && <Check size={15} />}{smtpError}</span> : smtpSaved ? <span className="settings-success"><Check size={16} /> SMTP ayarları kaydedildi.</span> : <span>Test e-postası yönetici adresine gönderilir. Boş bırakılan şifre korunur.</span>}</div><div className="smtp-actions"><button type="button" className="settings-button" disabled={smtpSaving || smtpTesting || !encryptionKeyConfigured && !smtpPasswordConfigured} onClick={() => void saveSmtp(true)}><Send size={15} />{smtpTesting ? "Test gönderiliyor..." : "Kaydet ve test et"}</button><button className="settings-button settings-button-primary" disabled={smtpSaving || smtpTesting}><Save size={16} />{smtpSaving ? "Kaydediliyor..." : "Ayarları kaydet"}</button></div></div>
+          <section className="settings-card smtp-test-card"><div className="smtp-test-copy"><h2>Test e-postası</h2><p>SMTP ayarlarını kaydedip bu adrese deneme iletisi gönderin.</p></div><div className="smtp-test-controls"><label><span>Alıcı e-posta adresi</span><input type="email" maxLength={255} value={smtpTestAddress} onChange={event => { setSmtpTestAddress(event.target.value); setSmtpError(""); setSmtpTested(false); }} placeholder="ornek@firma.com" /></label><button type="button" className="settings-button settings-button-primary" disabled={smtpSaving || smtpTesting || !encryptionKeyConfigured && !smtpPasswordConfigured} onClick={() => void saveSmtp(true)}><Send size={16} />{smtpTesting ? "Gönderiliyor..." : "Test gönder"}</button></div>{smtpError && <div className={smtpTested ? "smtp-test-result success" : "smtp-test-result error"} role="status">{smtpTested && <Check size={15} />}{smtpError}</div>}</section>
+          <div className="settings-save smtp-save"><div role="status">{smtpSaved ? <span className="settings-success"><Check size={16} /> SMTP ayarları kaydedildi.</span> : <span>Test kartından adres girerek bağlantıyı deneyin. Boş bırakılan şifre korunur.</span>}</div><button className="settings-button settings-button-primary" disabled={smtpSaving || smtpTesting}><Save size={16} />{smtpSaving ? "Kaydediliyor..." : "Ayarları kaydet"}</button></div>
         </>}
       </form>}
     </div>
@@ -157,6 +191,7 @@ async function compressLoginImage(file: File): Promise<string> {
 }
 
 async function removeFlatBackground(source: string, tolerance: number): Promise<string> {
+  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
   const response = await fetch(source);
   if (!response.ok) throw new Error("Görsel açılamadı.");
   const bitmap = await createImageBitmap(await response.blob());
@@ -175,8 +210,7 @@ async function removeFlatBackground(source: string, tolerance: number): Promise<
   const edgeInset = Math.min(2, Math.floor(Math.min(width, height) / 4));
   const seeds = [edgeInset * width + edgeInset, edgeInset * width + width - 1 - edgeInset, (height - 1 - edgeInset) * width + edgeInset, (height - 1 - edgeInset) * width + width - 1 - edgeInset];
   const fade = 22;
-  let removed = 0;
-  let seedMark = 1;
+  let removed = 0, seedMark = 1;
   for (const seed of seeds) {
     if (visited[seed]) { seedMark++; continue; }
     const offset = seed * 4;
@@ -185,8 +219,8 @@ async function removeFlatBackground(source: string, tolerance: number): Promise<
     queue[write++] = seed; visited[seed] = seedMark;
     while (read < write) {
       const index = queue[read++], position = index * 4;
+      if (data[position + 3] === 0) continue;
       const distance = Math.hypot(data[position] - red, data[position + 1] - green, data[position + 2] - blue);
-      if (distance > tolerance + fade || data[position + 3] === 0) continue;
       if (distance <= tolerance) { data[position + 3] = 0; removed++; }
       else data[position + 3] = Math.round(data[position + 3] * ((distance - tolerance) / fade));
       const x = index % width;
