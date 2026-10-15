@@ -202,8 +202,8 @@ export default function ModulesListPage({ token }: Props) {
         },
       });
       closeModal();
-    } catch {
-      setError("Kayıt veritabanına yazılamadı.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
@@ -221,8 +221,8 @@ export default function ModulesListPage({ token }: Props) {
       await removeRow(deleteId);
       setDeleteId(null);
       setError("");
-    } catch {
-      setError("Silme başarısız.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Silme başarısız.");
     } finally {
       setBusy(false);
     }

@@ -155,8 +155,8 @@ export default function DistrictsListPage({ token }: Props) {
       await saveRow(nextRow);
       setModalOpen(false);
       setEditId(null);
-    } catch {
-      setError("Kayıt yazılamadı.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kayıt yazılamadı.");
     } finally {
       setBusy(false);
     }
@@ -197,8 +197,8 @@ export default function DistrictsListPage({ token }: Props) {
     try {
       await persistBulk(added);
       setBulkOpen(false);
-    } catch {
-      setError("Toplu kayıt yazılamadı.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Toplu kayıt yazılamadı.");
     } finally {
       setBusy(false);
     }
@@ -210,8 +210,8 @@ export default function DistrictsListPage({ token }: Props) {
     try {
       await removeRow(deleteId);
       setDeleteId(null);
-    } catch {
-      setError("Silme başarısız.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Silme başarısız.");
     } finally {
       setBusy(false);
     }

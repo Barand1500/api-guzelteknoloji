@@ -118,7 +118,14 @@ export async function createCategory(name: string, slugInput: string, folderInpu
     const [folder] = await pool.query<any[]>("SELECT id FROM api_category_folders WHERE id=? LIMIT 1", [folderId]);
     if (!folder[0]) throw new InputError("Klasör bulunamadı", 404);
   }
+  // Idempotent: slug veya tablo zaten varsa mevcut kategoriyi döndür (Tahsilat bootstrap 409 önler)
+  const [bySlug] = await pool.query<CategoryRow[]>("SELECT * FROM api_categories WHERE slug=? LIMIT 1", [slug]);
+  if (bySlug[0]) return visibleCategory(bySlug[0]);
+  const [byName] = await pool.query<CategoryRow[]>("SELECT * FROM api_categories WHERE name=? LIMIT 1", [name]);
+  if (byName[0]) return visibleCategory(byName[0]);
   const sqlTable = tableName(0, name);
+  const [byTable] = await pool.query<CategoryRow[]>("SELECT * FROM api_categories WHERE table_name=? LIMIT 1", [sqlTable]);
+  if (byTable[0]) return visibleCategory(byTable[0]);
   const [used] = await pool.query<any[]>("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? LIMIT 1", [sqlTable]);
   if (used.length) throw new InputError("Bu kategori adı bir MySQL tablosunda zaten kullanılıyor", 409);
   const [result] = await pool.query<any>("INSERT INTO api_categories(name,slug,active,folder_id) VALUES (?,?,1,?)", [name, slug, folderId]);

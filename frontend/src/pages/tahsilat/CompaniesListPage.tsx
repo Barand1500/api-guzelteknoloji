@@ -232,8 +232,8 @@ export default function CompaniesListPage({ token }: Props) {
         },
       });
       closeModal();
-    } catch {
-      setError("Kayıt veritabanına yazılamadı.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
@@ -245,8 +245,8 @@ export default function CompaniesListPage({ token }: Props) {
     try {
       await removeRow(deleteId);
       setDeleteId(null);
-    } catch {
-      setError("Silme başarısız.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Silme başarısız.");
     } finally {
       setBusy(false);
     }

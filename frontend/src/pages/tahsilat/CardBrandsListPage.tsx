@@ -124,8 +124,8 @@ export default function CardBrandsListPage({ token }: Props) {
     try {
       await saveRow(nextRow);
       closeModal();
-    } catch {
-      setError("Kayıt veritabanına yazılamadı.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
@@ -137,8 +137,8 @@ export default function CardBrandsListPage({ token }: Props) {
     try {
       await removeRow(deleteId);
       setDeleteId(null);
-    } catch {
-      setError("Silme başarısız.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Silme başarısız.");
     } finally {
       setBusy(false);
     }

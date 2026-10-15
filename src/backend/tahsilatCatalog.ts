@@ -6,13 +6,13 @@
 import { ensureBinsCategory } from "./binsBootstrap.js";
 import {
   addColumn,
-  categoryBySlug,
   createCategory,
   createCategoryFolder,
   InputError,
+  normalizeSlug,
   publicData,
 } from "./categories.js";
-import { initDatabase, pool, type CategoryRow } from "./database.js";
+import { columnName, initDatabase, pool, tableName, type CategoryRow } from "./database.js";
 
 export type TahsilatResource =
   | "bins"
@@ -210,39 +210,99 @@ function normKey(value: string) {
 }
 
 async function findBySlug(slug: string): Promise<CategoryRow | null> {
-  try {
-    return await categoryBySlug(slug);
-  } catch {
-    const [rows] = await pool.query<CategoryRow[]>(
-      "SELECT * FROM api_categories WHERE slug=? LIMIT 1",
-      [slug],
-    );
-    return rows[0] ?? null;
-  }
+  const [rows] = await pool.query<CategoryRow[]>(
+    "SELECT * FROM api_categories WHERE slug=? LIMIT 1",
+    [slug],
+  );
+  return rows[0] ?? null;
 }
 
+async function findCategoryForMeta(meta: { name: string; slug: string }): Promise<CategoryRow | null> {
+  const bySlug = await findBySlug(meta.slug);
+  if (bySlug) return bySlug;
+  const nameSlug = normalizeSlug(meta.name);
+  if (nameSlug && nameSlug !== meta.slug) {
+    const byNameSlug = await findBySlug(nameSlug);
+    if (byNameSlug) return byNameSlug;
+  }
+  const [byName] = await pool.query<CategoryRow[]>(
+    "SELECT * FROM api_categories WHERE name=? LIMIT 1",
+    [meta.name],
+  );
+  return byName[0] ?? null;
+}
+
+/** Sütun yoksa ekle; kolon/metadata çakışması satır CRUD'yi bozmasın */
 async function ensureColumns(categoryId: number, columns: ColDef[]) {
   const [existing] = await pool.query<any[]>(
-    "SELECT name FROM api_category_columns WHERE category_id=?",
+    "SELECT name, sql_name FROM api_category_columns WHERE category_id=?",
     [categoryId],
   );
-  const have = new Set(existing.map((r: { name: string }) => normKey(r.name)));
+  const haveName = new Set(existing.map((r: { name: string }) => normKey(r.name)));
+  const haveSql = new Set(
+    existing
+      .map((r: { name: string; sql_name: string | null }) => normKey(r.sql_name || r.name))
+      .filter(Boolean),
+  );
+
   for (const col of columns) {
-    if (have.has(normKey(col.name))) continue;
-    await addColumn(categoryId, col);
+    if (haveName.has(normKey(col.name))) continue;
+    const sqlGuess = columnName(0, col.name);
+    if (haveSql.has(normKey(sqlGuess))) {
+      haveName.add(normKey(col.name));
+      continue;
+    }
+    try {
+      await addColumn(categoryId, col);
+      haveName.add(normKey(col.name));
+      haveSql.add(normKey(sqlGuess));
+    } catch (err) {
+      if (err instanceof InputError && err.status === 409) continue;
+      const code = (err as { code?: string })?.code;
+      if (code === "ER_DUP_ENTRY" || code === "ER_DUP_FIELDNAME") continue;
+      throw err;
+    }
   }
 }
 
 async function ensureNamedCategory(resource: Exclude<TahsilatResource, "bins">): Promise<CategoryRow> {
   await initDatabase();
   const meta = RESOURCE_META[resource];
-  let category = await findBySlug(meta.slug);
+  let category = await findCategoryForMeta(meta);
   if (!category) {
     const folderId = await ensureTahsilatFolderId();
-    await createCategory(meta.name, meta.slug, folderId);
-    category = await findBySlug(meta.slug);
+    try {
+      await createCategory(meta.name, meta.slug, folderId);
+    } catch (err) {
+      // "Bankalar" → tablo bankalar; slug banks ayrı olabilir — mevcut kategoriyi bağla
+      category = await findCategoryForMeta(meta);
+      if (!category) {
+        const expectedTable = tableName(0, meta.name);
+        const [byTable] = await pool.query<CategoryRow[]>(
+          "SELECT * FROM api_categories WHERE table_name=? LIMIT 1",
+          [expectedTable],
+        );
+        category = byTable[0] ?? null;
+      }
+      if (!category) throw err;
+    }
+    if (!category) category = await findCategoryForMeta(meta);
     if (!category) throw new InputError(`${meta.name} kategorisi oluşturulamadı`, 500);
   }
+
+  // Slug standartlaştır (bankalar → banks vb.)
+  if (category.slug !== meta.slug) {
+    try {
+      await pool.query("UPDATE api_categories SET slug=? WHERE id=?", [meta.slug, category.id]);
+      category = { ...category, slug: meta.slug };
+    } catch {
+      /* slug unique — mevcut ile devam */
+    }
+  }
+  if (!category.active) {
+    await pool.query("UPDATE api_categories SET active=1 WHERE id=?", [category.id]);
+  }
+
   await ensureColumns(category.id, meta.columns);
   const [fresh] = await pool.query<CategoryRow[]>(
     "SELECT * FROM api_categories WHERE id=? LIMIT 1",
