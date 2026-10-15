@@ -21,6 +21,7 @@ const publicDir = path.resolve(here, "../../public");
 
 app.use(cors({ origin: true }));
 app.use(express.json({ limit: "12mb" }));
+app.use(express.urlencoded({ extended: false, limit: "256kb" }));
 app.use(express.static(publicDir));
 app.use("/uploads", express.static(uploadDir, { immutable: true, maxAge: "1y" }));
 app.use(authRoutes, adminRoutes, searchRoutes, tahsilatPublicRoutes, publicRoutes);

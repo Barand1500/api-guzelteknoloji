@@ -9,6 +9,7 @@ import { apiKeyForCategory, InputError } from "./categories.js";
 import { initDatabase, pool } from "./database.js";
 import { recordKeyUsage } from "./keyQuota.js";
 import { listTahsilatChangeLog } from "./tahsilatAdminService.js";
+import { completeTenantPayment, startTenantPayment } from "./payments/service.js";
 import {
   ensureAllTahsilatCatalog,
   ensureTahsilatResource,
@@ -100,6 +101,36 @@ tahsilatPublicRoutes.get(
   },
 );
 
+/** Merkezi 3D başlatma: API anahtarı ilgili firmayı belirler. */
+tahsilatPublicRoutes.post(
+  "/v1/tahsilat/payments/start",
+  serviceEnabled,
+  async (request, response) => {
+    const { category, keyId } = await authorizeResource(request, "virtual-pos");
+    await track(request, keyId, category.id);
+    const result = await startTenantPayment(
+      keyId,
+      request.body || {},
+      `${publicBaseUrl(request)}/v1/tahsilat`,
+    );
+    response.json({ success: true, data: result });
+  },
+);
+
+/** Banka callback'i açık uçtur; tek kullanımlık oturum UUID'siyle doğrulanır. */
+tahsilatPublicRoutes.all(
+  "/v1/tahsilat/payments/callback/:sessionId",
+  async (request, response) => {
+    const outcome = String(request.query.outcome || "fail") === "ok" ? "ok" : "fail";
+    const body = {
+      ...(request.query as Record<string, unknown>),
+      ...(request.body && typeof request.body === "object" ? request.body : {}),
+    };
+    const result = await completeTenantPayment(String(request.params.sessionId), outcome, body);
+    response.redirect(303, result.target);
+  },
+);
+
 tahsilatPublicRoutes.get(
   "/v1/tahsilat/:resource",
   serviceEnabled,
@@ -112,6 +143,9 @@ tahsilatPublicRoutes.get(
       );
     }
     const { category, keyId } = await authorizeResource(request, resource);
+    if (resource === "companies" || resource === "email-settings") {
+      throw new InputError("Bu kaynak genel Tahsilat API üzerinden sunulmaz", 404);
+    }
     const result = await listTahsilatResource(resource, publicBaseUrl(request), {
       province: String(request.query.province || ""),
       il: String(request.query.il || ""),

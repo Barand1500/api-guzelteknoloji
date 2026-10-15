@@ -46,8 +46,6 @@ export const TAHSILAT_RESOURCES: TahsilatResource[] = [
   "tax-offices",
   "modules",
   "template-vars",
-  "companies",
-  "email-settings",
   "versions",
 ];
 

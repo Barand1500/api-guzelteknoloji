@@ -233,6 +233,48 @@ async function companyTableMeta() {
     apiKeyIdSql: apiKeyIdCol.sqlName || apiKeyIdCol.name,
     nameCol: colByName.get(columnKey("name")),
     domainCol: colByName.get(columnKey("domain")),
+    columns: colByName,
+  };
+}
+
+/** Resolve a tenant database only from a previously authenticated company API key. */
+export async function tenantDatabaseForApiKeyId(keyId: string) {
+  if (!keyId || keyId.length > 64) throw new InputError("Firma anahtarı geçersiz", 401);
+  const meta = await companyTableMeta();
+  const col = (name: string) => {
+    const hit = meta.columns.get(columnKey(name));
+    if (!hit) throw new InputError(`Firma ${name} alanı eksik`, 503);
+    return identifier(hit.sqlName || hit.name);
+  };
+  const [rows] = await pool.query<any[]>(
+    `SELECT id, ${col("name")} AS companyName, ${col("domain")} AS domain,
+      ${col("domainActive")} AS domainActive,
+      ${col("dbHost")} AS dbHost, ${col("dbPort")} AS dbPort,
+      ${col("dbName")} AS dbName, ${col("dbUser")} AS dbUser,
+      ${col("dbPassword")} AS dbPassword, ${col("dbActive")} AS dbActive
+     FROM ${identifier(meta.tableName)}
+     WHERE ${identifier(meta.apiKeyIdSql)}=? AND active=1 LIMIT 2`,
+    [keyId],
+  );
+  const row = rows[0];
+  const enabled = [true, 1, "1", "true", "yes", "evet"].includes(
+    typeof row?.dbActive === "string" ? row.dbActive.toLowerCase() : row?.dbActive,
+  );
+  const domainEnabled = [true, 1, "1", "true", "yes", "evet"].includes(
+    typeof row?.domainActive === "string" ? row.domainActive.toLowerCase() : row?.domainActive,
+  );
+  if (rows.length !== 1 || !row || !enabled || !domainEnabled || !row.domain || !row.dbHost || !row.dbName || !row.dbUser || !row.dbPassword) {
+    throw new InputError("Bu API anahtarı için aktif firma veritabanı bulunamadı", 403);
+  }
+  return {
+    companyId: String(row.id),
+    companyName: String(row.companyName || ""),
+    domain: String(row.domain || ""),
+    host: String(row.dbHost),
+    port: Number(row.dbPort) || 3306,
+    database: String(row.dbName),
+    user: String(row.dbUser),
+    password: String(row.dbPassword),
   };
 }
 
