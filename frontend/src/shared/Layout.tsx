@@ -171,14 +171,6 @@ export default function Layout({
     gsap.fromTo(panel, { autoAlpha: 0, x: folderMode ? 18 : -18 }, { autoAlpha: 1, x: 0, duration: 0.32, ease: "power2.out" });
   }, [folderMode, tahsilatMode]);
 
-  useEffect(() => {
-    if (!tahsilatMode) return;
-    const group = groupIdForPage(tahsilatPage);
-    if (!group || tahsilatOpenGroup === group) return;
-    setTahsilatOpenGroup(group);
-    persistExpandedGroup(group);
-  }, [tahsilatMode, tahsilatPage, tahsilatOpenGroup]);
-
   // Yenilemede Tahsilat dünyası açıksa içerik de o moda gelsin
   useEffect(() => {
     if (readWorld() !== "tahsilat") return;
@@ -196,10 +188,17 @@ export default function Layout({
   function openTahsilatPage(page: TahsilatPageId) {
     setTahsilatPage(page);
     localStorage.setItem("gtk_tahsilat_page", page);
+    // Sayfa açılınca yalnızca o grup açık (accordion)
+    const group = groupIdForPage(page);
+    if (group) {
+      setTahsilatOpenGroup(group);
+      persistExpandedGroup(group);
+    }
     setView("tahsilat");
     setSearchOpen(false);
     setProfileOpen(false);
   }
+  /** Accordion: tek grup. Başka gruba tıkla → eski kapanır, yeni açılır. Aynı gruba tıkla → kapanır. */
   function toggleTahsilatGroup(groupId: string) {
     setTahsilatOpenGroup((prev) => {
       const next = prev === groupId ? null : groupId;
@@ -216,6 +215,11 @@ export default function Layout({
       const stored = localStorage.getItem("gtk_tahsilat_page") || "";
       const page = isTahsilatPageId(stored) ? stored : "ozet";
       setTahsilatPage(page);
+      const group = groupIdForPage(page);
+      if (group) {
+        setTahsilatOpenGroup(group);
+        persistExpandedGroup(group);
+      }
       setView("tahsilat");
     } else if (view === "tahsilat") {
       setView("dashboard");
