@@ -28,7 +28,7 @@ type Props = { token: string };
 
 /** İlçeler — MySQL /v1/tahsilat/districts */
 export default function DistrictsListPage({ token }: Props) {
-  const { rows, loading, persist } = useTahsilatDb(token, "districts");
+  const { rows, loading, saveRow, removeRow, persistBulk } = useTahsilatDb(token, "districts");
   const [provinces, setProvinces] = useState<TahsilatAdminRow[]>([]);
   const [query, setQuery] = useState("");
   const [filterProvince, setFilterProvince] = useState("");
@@ -150,10 +150,9 @@ export default function DistrictsListPage({ token }: Props) {
         provinceId: Number(provinceIdByName(form.province)) || 0,
       },
     };
-    const next = editId ? rows.map((r) => (r.id === editId ? nextRow : r)) : [nextRow, ...rows];
     setBusy(true);
     try {
-      await persist(next);
+      await saveRow(nextRow);
       setModalOpen(false);
       setEditId(null);
     } catch {
@@ -196,7 +195,7 @@ export default function DistrictsListPage({ token }: Props) {
     }
     setBusy(true);
     try {
-      await persist([...added, ...rows]);
+      await persistBulk(added);
       setBulkOpen(false);
     } catch {
       setError("Toplu kayıt yazılamadı.");
@@ -209,7 +208,7 @@ export default function DistrictsListPage({ token }: Props) {
     if (!deleteId) return;
     setBusy(true);
     try {
-      await persist(rows.filter((r) => r.id !== deleteId));
+      await removeRow(deleteId);
       setDeleteId(null);
     } catch {
       setError("Silme başarısız.");

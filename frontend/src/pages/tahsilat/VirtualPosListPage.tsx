@@ -1,64 +1,46 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, CreditCard, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { listBankNames } from "./banksStore";
+import { fetchTahsilatResource, type TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
-export type VirtualPosRow = {
-  id: string;
-  name: string;
-  bank: string;
-  variables: string;
-  active: boolean;
-};
-
-type FormState = {
-  name: string;
-  bank: string;
-  variables: string;
-  active: boolean;
-};
-
-const STORAGE_KEY = "gtk_tahsilat_virtual_pos_v1";
+type FormState = { name: string; bank: string; variables: string; active: boolean };
 const emptyForm: FormState = { name: "", bank: "", variables: "", active: true };
 
-const SAMPLE: VirtualPosRow[] = [
-  { id: "vp1", name: "AKBANK SANAL POS", bank: "AKBANK T.A.Ş.", variables: "Güvenli İşyeri Numarası, Terminal Safe ID, Güvenlik Anahtarı", active: true },
-  { id: "vp2", name: "ALTERNATİF BANK SANAL POS", bank: "ALTERNATİF BANK A.Ş.", variables: "", active: true },
-  { id: "vp3", name: "ANADOLU BANK SANAL POS", bank: "ANADOLUBANK A.Ş.", variables: "", active: true },
-  { id: "vp4", name: "DENİZBANK SANAL POS", bank: "DENİZBANK A.Ş.", variables: "", active: true },
-  { id: "vp5", name: "FIBA BANK SANAL POS", bank: "FIBABANKA A.Ş.", variables: "", active: true },
-  { id: "vp6", name: "GARANTİ SANAL POS", bank: "T. GARANTİ BANKASI A.Ş.", variables: "", active: true },
-];
+type Props = { token: string };
 
-function loadRows(): VirtualPosRow[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (Array.isArray(raw) && raw.length) return raw as VirtualPosRow[];
-  } catch {
-    /* örnek */
-  }
-  return SAMPLE.map((r) => ({ ...r }));
-}
-
-function uid() {
-  return `vpos-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** Ana Sanal Poslar — banka Bankalar listesinden */
-export default function VirtualPosListPage() {
-  const [rows, setRows] = useState<VirtualPosRow[]>(loadRows);
+/** Ana Sanal Poslar — MySQL */
+export default function VirtualPosListPage({ token }: Props) {
+  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "virtual-pos");
+  const [bankNames, setBankNames] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
-  }, [rows]);
+    let cancelled = false;
+    fetchTahsilatResource(token, "banks")
+      .then((data) => {
+        if (cancelled) return;
+        const names = (data.rows || [])
+          .map((r) => str(r, "name"))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, "tr"));
+        setBankNames(names);
+      })
+      .catch(() => {
+        if (!cancelled) setBankNames([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, modalOpen]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -89,11 +71,11 @@ export default function VirtualPosListPage() {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     if (!q) return rows;
     return rows.filter((r) =>
-      `${r.name} ${r.bank} ${r.variables}`.toLocaleLowerCase("tr-TR").includes(q),
+      `${str(r, "name")} ${str(r, "bank")} ${str(r, "variables")}`
+        .toLocaleLowerCase("tr-TR")
+        .includes(q),
     );
   }, [rows, query]);
-
-  const bankOptions = useMemo(() => listBankNames(), [modalOpen]);
 
   function openCreate() {
     setEditId(null);
@@ -102,13 +84,13 @@ export default function VirtualPosListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: VirtualPosRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
     setForm({
-      name: row.name,
-      bank: row.bank,
-      variables: row.variables,
-      active: row.active,
+      name: str(row, "name"),
+      bank: str(row, "bank"),
+      variables: str(row, "variables"),
+      active: row.active !== false,
     });
     setError("");
     setModalOpen(true);
@@ -120,7 +102,7 @@ export default function VirtualPosListPage() {
     setError("");
   }
 
-  function save() {
+  async function onSave() {
     const name = form.name.trim();
     const bank = form.bank.trim();
     if (!bank) {
@@ -131,23 +113,32 @@ export default function VirtualPosListPage() {
       setError("Sanal pos adı gerekli.");
       return;
     }
-    const next: VirtualPosRow = {
-      id: editId || uid(),
-      name,
-      bank,
-      variables: form.variables.trim(),
-      active: form.active,
-    };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeModal();
+    setBusy(true);
+    try {
+      await saveRow({
+        id: editId || `new-${Date.now()}`,
+        active: form.active,
+        data: { name, bank, variables: form.variables.trim() },
+      });
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await removeRow(deleteId);
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -163,9 +154,9 @@ export default function VirtualPosListPage() {
             />
             Ana Sanal Poslar
           </h1>
-          <p>Sanal pos tanımlarını görüntüleyin ve yönetin</p>
+          <p>Sanal pos tanımlarını görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           Yeni Sanal Pos
         </button>
@@ -204,30 +195,22 @@ export default function VirtualPosListPage() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.name}</td>
-                    <td>{row.bank}</td>
+                    <td>{str(row, "name")}</td>
+                    <td>{str(row, "bank")}</td>
                     <td>
-                      <span className={`vpos-status ${row.active ? "on" : "off"}`}>
-                        {row.active ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active ? "Aktif" : "Pasif"}
+                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+                        {row.active !== false ? "Aktif" : "Pasif"}
                       </span>
                     </td>
                     <td>
                       <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
+                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
                           <Pencil size={16} />
                         </button>
                         <button
                           type="button"
                           className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
                           onClick={() => setDeleteId(row.id)}
                         >
                           <Trash2 size={16} />
@@ -240,8 +223,7 @@ export default function VirtualPosListPage() {
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz sanal pos yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk sanal posu ekleyin."}</span>
+              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz sanal pos yok"}</strong>
             </div>
           )}
         </div>
@@ -249,35 +231,24 @@ export default function VirtualPosListPage() {
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="vpos-modal-title"
-            style={{ width: "min(520px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(520px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
-                <h2 id="vpos-modal-title">{editId ? "Sanal Pos Düzenle" : "Yeni Sanal Pos"}</h2>
+                <h2>{editId ? "Sanal Pos Düzenle" : "Yeni Sanal Pos"}</h2>
                 <p>Sanal pos bilgilerini girin.</p>
               </div>
-              <button type="button" className="bin-modal-close" onClick={closeModal} aria-label="Kapat">
+              <button type="button" className="bin-modal-close" onClick={closeModal}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-body">
               <div className="bin-field">
-                <label htmlFor="vpos-bank">
+                <label>
                   Banka <em>*</em>
                 </label>
-                <select
-                  id="vpos-bank"
-                  value={form.bank}
-                  onChange={(e) => setForm((f) => ({ ...f, bank: e.target.value }))}
-                >
+                <select value={form.bank} onChange={(e) => setForm((f) => ({ ...f, bank: e.target.value }))}>
                   <option value="">Seçiniz</option>
-                  {bankOptions.map((b) => (
+                  {bankNames.map((b) => (
                     <option key={b} value={b}>
                       {b}
                     </option>
@@ -285,30 +256,23 @@ export default function VirtualPosListPage() {
                 </select>
               </div>
               <div className="bin-field">
-                <label htmlFor="vpos-name">
+                <label>
                   Ad <em>*</em>
                 </label>
                 <input
-                  id="vpos-name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Ad"
                   autoFocus
                 />
               </div>
               <div className="bin-field">
-                <label htmlFor="vpos-vars">Değişkenler</label>
+                <label>Değişkenler</label>
                 <textarea
-                  id="vpos-vars"
                   className="vpos-textarea"
                   rows={4}
                   value={form.variables}
                   onChange={(e) => setForm((f) => ({ ...f, variables: e.target.value }))}
-                  placeholder="Değişkenler"
                 />
-                <small className="bank-logo-hint">
-                  Sanal pos adaptörü için yapılandırma değişkenleri (JSON veya serbest metin)
-                </small>
               </div>
               <div className="vpos-active-row">
                 <div>
@@ -320,21 +284,16 @@ export default function VirtualPosListPage() {
                   className={`vpos-switch ${form.active ? "on" : ""}`}
                   role="switch"
                   aria-checked={form.active}
-                  aria-label="Aktif"
                   onClick={() => setForm((f) => ({ ...f, active: !f.active }))}
                 >
                   <span />
                 </button>
               </div>
-              {error ? (
-                <span className="bin-modal-error" role="alert">
-                  {error}
-                </span>
-              ) : null}
+              {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={save}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void onSave()} disabled={busy}>
+                Kaydet
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -346,30 +305,18 @@ export default function VirtualPosListPage() {
 
       {deleteId ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="vpos-del-title"
-            style={{ width: "min(400px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(400px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
-                <h2 id="vpos-del-title">Sanal pos silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak.</p>
+                <h2>Sanal pos silinsin mi?</h2>
+                <p>Veritabanından kaldırılacak.</p>
               </div>
-              <button
-                type="button"
-                className="bin-modal-close"
-                onClick={() => setDeleteId(null)}
-                aria-label="Kapat"
-              >
+              <button type="button" className="bin-modal-close" onClick={() => setDeleteId(null)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button type="button" className="primary" onClick={() => void confirmDelete()} disabled={busy}>
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

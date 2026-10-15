@@ -1,6 +1,7 @@
 /**
  * Tahsilat ortak veri katalogları — kategori bootstrap + normalize.
  * AnyPay: GET /v1/tahsilat/{resource} + X-API-Key
+ * Panel: /admin/tahsilat/{resource} → MySQL
  */
 import { ensureBinsCategory } from "./binsBootstrap.js";
 import {
@@ -20,7 +21,15 @@ export type TahsilatResource =
   | "districts"
   | "card-types"
   | "card-kinds"
-  | "card-brands";
+  | "card-brands"
+  | "virtual-pos"
+  | "currencies"
+  | "contracts"
+  | "tax-offices"
+  | "modules"
+  | "template-vars"
+  | "companies"
+  | "email-settings";
 
 export const TAHSILAT_RESOURCES: TahsilatResource[] = [
   "bins",
@@ -30,12 +39,19 @@ export const TAHSILAT_RESOURCES: TahsilatResource[] = [
   "card-types",
   "card-kinds",
   "card-brands",
+  "virtual-pos",
+  "currencies",
+  "contracts",
+  "tax-offices",
+  "modules",
+  "template-vars",
+  "companies",
+  "email-settings",
 ];
 
-const RESOURCE_META: Record<
-  Exclude<TahsilatResource, "bins">,
-  { name: string; slug: string; columns: Array<{ name: string; fieldType: "text" | "integer" }> }
-> = {
+type ColDef = { name: string; fieldType: "text" | "integer" };
+
+const RESOURCE_META: Record<Exclude<TahsilatResource, "bins">, { name: string; slug: string; columns: ColDef[] }> = {
   banks: {
     name: "Bankalar",
     slug: "banks",
@@ -83,6 +99,88 @@ const RESOURCE_META: Record<
       { name: "logo", fieldType: "text" },
     ],
   },
+  "virtual-pos": {
+    name: "Ana Sanal Poslar",
+    slug: "virtual-pos",
+    columns: [
+      { name: "name", fieldType: "text" },
+      { name: "bank", fieldType: "text" },
+      { name: "variables", fieldType: "text" },
+    ],
+  },
+  currencies: {
+    name: "Para Birimleri",
+    slug: "currencies",
+    columns: [
+      { name: "name", fieldType: "text" },
+      { name: "shortName", fieldType: "text" },
+      { name: "symbol", fieldType: "text" },
+    ],
+  },
+  contracts: {
+    name: "Sözleşmeler",
+    slug: "contracts",
+    columns: [{ name: "name", fieldType: "text" }],
+  },
+  "tax-offices": {
+    name: "Vergi Daireleri",
+    slug: "tax-offices",
+    columns: [
+      { name: "name", fieldType: "text" },
+      { name: "code", fieldType: "text" },
+      { name: "province", fieldType: "text" },
+    ],
+  },
+  modules: {
+    name: "Modüller",
+    slug: "modules",
+    columns: [
+      { name: "name", fieldType: "text" },
+      { name: "code", fieldType: "text" },
+      { name: "icon", fieldType: "text" },
+      { name: "sortOrder", fieldType: "integer" },
+      { name: "parentId", fieldType: "text" },
+      { name: "parentName", fieldType: "text" },
+    ],
+  },
+  "template-vars": {
+    name: "Şablon Değişkenleri",
+    slug: "template-vars",
+    columns: [
+      { name: "name", fieldType: "text" },
+      { name: "type", fieldType: "text" },
+      { name: "variables", fieldType: "text" },
+    ],
+  },
+  companies: {
+    name: "Firmalar",
+    slug: "companies",
+    columns: [
+      { name: "name", fieldType: "text" },
+      { name: "domain", fieldType: "text" },
+      { name: "domainActive", fieldType: "text" },
+      { name: "dbHost", fieldType: "text" },
+      { name: "dbPort", fieldType: "text" },
+      { name: "dbName", fieldType: "text" },
+      { name: "dbUser", fieldType: "text" },
+      { name: "dbPassword", fieldType: "text" },
+      { name: "dbActive", fieldType: "text" },
+      { name: "frontendPath", fieldType: "text" },
+      { name: "licenseEndsAt", fieldType: "text" },
+    ],
+  },
+  "email-settings": {
+    name: "E-Posta Ayarları",
+    slug: "email-settings",
+    columns: [
+      { name: "host", fieldType: "text" },
+      { name: "port", fieldType: "text" },
+      { name: "address", fieldType: "text" },
+      { name: "password", fieldType: "text" },
+      { name: "ssl", fieldType: "text" },
+      { name: "tls", fieldType: "text" },
+    ],
+  },
 };
 
 async function ensureTahsilatFolderId(): Promise<number | null> {
@@ -120,24 +218,19 @@ async function findBySlug(slug: string): Promise<CategoryRow | null> {
   }
 }
 
-async function ensureColumns(
-  categoryId: number,
-  columns: Array<{ name: string; fieldType: "text" | "integer" }>,
-) {
+async function ensureColumns(categoryId: number, columns: ColDef[]) {
   const [existing] = await pool.query<any[]>(
     "SELECT name FROM api_category_columns WHERE category_id=?",
     [categoryId],
   );
-  const have = new Set(existing.map((r) => normKey(r.name)));
+  const have = new Set(existing.map((r: { name: string }) => normKey(r.name)));
   for (const col of columns) {
     if (have.has(normKey(col.name))) continue;
     await addColumn(categoryId, col);
   }
 }
 
-async function ensureNamedCategory(
-  resource: Exclude<TahsilatResource, "bins">,
-): Promise<CategoryRow> {
+async function ensureNamedCategory(resource: Exclude<TahsilatResource, "bins">): Promise<CategoryRow> {
   await initDatabase();
   const meta = RESOURCE_META[resource];
   let category = await findBySlug(meta.slug);
@@ -170,7 +263,6 @@ export function isTahsilatResource(value: string): value is TahsilatResource {
   return (TAHSILAT_RESOURCES as string[]).includes(value);
 }
 
-/** AnyPay / panel için düz liste */
 export async function listTahsilatResource(
   resource: TahsilatResource,
   baseUrl = "",
@@ -186,11 +278,10 @@ export async function listTahsilatResource(
       data = data.filter((row) => String((row as { provinceId?: unknown }).provinceId || "") === provinceId);
     } else if (province) {
       const key = province.toLocaleLowerCase("tr-TR");
-      data = data.filter(
-        (row) =>
-          String((row as { province?: unknown }).province || "")
-            .toLocaleLowerCase("tr-TR")
-            .includes(key),
+      data = data.filter((row) =>
+        String((row as { province?: unknown }).province || "")
+          .toLocaleLowerCase("tr-TR")
+          .includes(key),
       );
     }
   }

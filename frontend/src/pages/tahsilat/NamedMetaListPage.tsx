@@ -35,7 +35,7 @@ export default function NamedMetaListPage({
   modalHint,
   fieldLabel,
 }: Props) {
-  const { rows, loading, persist } = useTahsilatDb(token, resource);
+  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, resource);
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -116,12 +116,9 @@ export default function NamedMetaListPage({
       active: true,
       data: { name: trimmed },
     };
-    const next = editId
-      ? rows.map((r) => (r.id === editId ? nextRow : r))
-      : [nextRow, ...rows];
     setBusy(true);
     try {
-      await persist(next);
+      await saveRow(nextRow);
       closeModal();
     } catch {
       setError("Kayıt veritabanına yazılamadı.");
@@ -134,7 +131,7 @@ export default function NamedMetaListPage({
     if (!deleteId) return;
     setBusy(true);
     try {
-      await persist(rows.filter((r) => r.id !== deleteId));
+      await removeRow(deleteId);
       setDeleteId(null);
     } catch {
       setError("Silme başarısız.");

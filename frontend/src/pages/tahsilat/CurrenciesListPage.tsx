@@ -1,60 +1,26 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Coins, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import type { TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
-export type CurrencyRow = {
-  id: string;
-  name: string;
-  shortName: string;
-  symbol: string;
-  active: boolean;
-};
-
-type FormState = {
-  name: string;
-  shortName: string;
-  symbol: string;
-  active: boolean;
-};
-
-const STORAGE_KEY = "gtk_tahsilat_currencies_v1";
+type FormState = { name: string; shortName: string; symbol: string; active: boolean };
 const emptyForm: FormState = { name: "", shortName: "", symbol: "", active: true };
 
-const SAMPLE: CurrencyRow[] = [
-  { id: "c1", name: "Euro", shortName: "EUR", symbol: "€", active: true },
-  { id: "c2", name: "Türk Lirası", shortName: "TL", symbol: "₺", active: true },
-  { id: "c3", name: "ABD Doları", shortName: "USD", symbol: "$", active: true },
-];
+type Props = { token: string };
 
-function loadRows(): CurrencyRow[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (Array.isArray(raw) && raw.length) return raw as CurrencyRow[];
-  } catch {
-    /* örnek */
-  }
-  return SAMPLE.map((r) => ({ ...r }));
-}
-
-function uid() {
-  return `cur-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** Para Birimleri — Genel Tanımlar */
-export default function CurrenciesListPage() {
-  const [rows, setRows] = useState<CurrencyRow[]>(loadRows);
+/** Para Birimleri — MySQL */
+export default function CurrenciesListPage({ token }: Props) {
+  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "currencies");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
-  }, [rows]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -85,7 +51,9 @@ export default function CurrenciesListPage() {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     if (!q) return rows;
     return rows.filter((r) =>
-      `${r.name} ${r.shortName} ${r.symbol}`.toLocaleLowerCase("tr-TR").includes(q),
+      `${str(r, "name")} ${str(r, "shortName")} ${str(r, "symbol")}`
+        .toLocaleLowerCase("tr-TR")
+        .includes(q),
     );
   }, [rows, query]);
 
@@ -96,13 +64,13 @@ export default function CurrenciesListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: CurrencyRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
     setForm({
-      name: row.name,
-      shortName: row.shortName,
-      symbol: row.symbol,
-      active: row.active,
+      name: str(row, "name"),
+      shortName: str(row, "shortName"),
+      symbol: str(row, "symbol"),
+      active: row.active !== false,
     });
     setError("");
     setModalOpen(true);
@@ -114,7 +82,7 @@ export default function CurrenciesListPage() {
     setError("");
   }
 
-  function save() {
+  async function onSave() {
     const name = form.name.trim();
     const shortName = form.shortName.trim().toUpperCase();
     const symbol = form.symbol.trim();
@@ -133,29 +101,38 @@ export default function CurrenciesListPage() {
     const dup = rows.some(
       (r) =>
         r.id !== editId &&
-        r.shortName.toLocaleLowerCase("tr-TR") === shortName.toLocaleLowerCase("tr-TR"),
+        str(r, "shortName").toLocaleLowerCase("tr-TR") === shortName.toLocaleLowerCase("tr-TR"),
     );
     if (dup) {
       setError("Bu kısa ad zaten var.");
       return;
     }
-    const next: CurrencyRow = {
-      id: editId || uid(),
-      name,
-      shortName,
-      symbol,
-      active: form.active,
-    };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeModal();
+    setBusy(true);
+    try {
+      await saveRow({
+        id: editId || `new-${Date.now()}`,
+        active: form.active,
+        data: { name, shortName, symbol },
+      });
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await removeRow(deleteId);
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -171,9 +148,9 @@ export default function CurrenciesListPage() {
             />
             Para Birimleri
           </h1>
-          <p>Para birimlerini görüntüleyin ve yönetin</p>
+          <p>Para birimlerini görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           Yeni Para Birimi
         </button>
@@ -208,31 +185,23 @@ export default function CurrenciesListPage() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td className="bin-mono">{row.shortName}</td>
-                    <td style={{ fontSize: 18 }}>{row.symbol}</td>
-                    <td>{row.name}</td>
+                    <td className="bin-mono">{str(row, "shortName")}</td>
+                    <td style={{ fontSize: 18 }}>{str(row, "symbol")}</td>
+                    <td>{str(row, "name")}</td>
                     <td>
-                      <span className={`vpos-status ${row.active ? "on" : "off"}`}>
-                        {row.active ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active ? "Aktif" : "Pasif"}
+                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+                        {row.active !== false ? "Aktif" : "Pasif"}
                       </span>
                     </td>
                     <td>
                       <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
+                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
                           <Pencil size={16} />
                         </button>
                         <button
                           type="button"
                           className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
                           onClick={() => setDeleteId(row.id)}
                         >
                           <Trash2 size={16} />
@@ -245,8 +214,7 @@ export default function CurrenciesListPage() {
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz para birimi yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk para birimini ekleyin."}</span>
+              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz para birimi yok"}</strong>
             </div>
           )}
         </div>
@@ -254,57 +222,44 @@ export default function CurrenciesListPage() {
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cur-modal-title"
-            style={{ width: "min(480px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(480px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
-                <h2 id="cur-modal-title">{editId ? "Para Birimi Düzenle" : "Yeni Para Birimi"}</h2>
+                <h2>{editId ? "Para Birimi Düzenle" : "Yeni Para Birimi"}</h2>
                 <p>Para birimi bilgilerini girin.</p>
               </div>
-              <button type="button" className="bin-modal-close" onClick={closeModal} aria-label="Kapat">
+              <button type="button" className="bin-modal-close" onClick={closeModal}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-body">
               <div className="bin-field">
-                <label htmlFor="cur-name">
+                <label>
                   Ad <em>*</em>
                 </label>
                 <input
-                  id="cur-name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Ad"
                   autoFocus
                 />
               </div>
               <div className="bin-field-row">
                 <div className="bin-field">
-                  <label htmlFor="cur-short">
+                  <label>
                     Kısa Ad <em>*</em>
                   </label>
                   <input
-                    id="cur-short"
                     value={form.shortName}
                     onChange={(e) => setForm((f) => ({ ...f, shortName: e.target.value }))}
-                    placeholder="Kısa Ad"
                   />
                 </div>
                 <div className="bin-field">
-                  <label htmlFor="cur-symbol">
+                  <label>
                     Sembol <em>*</em>
                   </label>
                   <input
-                    id="cur-symbol"
                     value={form.symbol}
                     onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value }))}
-                    placeholder="Sembol"
                   />
                 </div>
               </div>
@@ -318,21 +273,16 @@ export default function CurrenciesListPage() {
                   className={`vpos-switch ${form.active ? "on" : ""}`}
                   role="switch"
                   aria-checked={form.active}
-                  aria-label="Aktif"
                   onClick={() => setForm((f) => ({ ...f, active: !f.active }))}
                 >
                   <span />
                 </button>
               </div>
-              {error ? (
-                <span className="bin-modal-error" role="alert">
-                  {error}
-                </span>
-              ) : null}
+              {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={save}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void onSave()} disabled={busy}>
+                Kaydet
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -344,30 +294,18 @@ export default function CurrenciesListPage() {
 
       {deleteId ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cur-del-title"
-            style={{ width: "min(400px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(400px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
-                <h2 id="cur-del-title">Para birimi silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak.</p>
+                <h2>Para birimi silinsin mi?</h2>
+                <p>Veritabanından kaldırılacak.</p>
               </div>
-              <button
-                type="button"
-                className="bin-modal-close"
-                onClick={() => setDeleteId(null)}
-                aria-label="Kapat"
-              >
+              <button type="button" className="bin-modal-close" onClick={() => setDeleteId(null)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button type="button" className="primary" onClick={() => void confirmDelete()} disabled={busy}>
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

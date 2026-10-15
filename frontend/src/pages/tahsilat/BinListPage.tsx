@@ -19,10 +19,8 @@ type Props = { token: string };
 
 /** BIN Listesi — MySQL (AnyPay /v1/tahsilat/bins) */
 export default function BinListPage({ token }: Props) {
-  const { rows, loading, saving, error: dbError, setError: setDbError, persist } = useTahsilatDb(
-    token,
-    "bins",
-  );
+  const { rows, loading, saving, error: dbError, setError: setDbError, saveRow, removeRow } =
+    useTahsilatDb(token, "bins");
   const [bankOptions, setBankOptions] = useState<string[]>([]);
   const [typeOptions, setTypeOptions] = useState<string[]>([]);
   const [brandOptions, setBrandOptions] = useState<string[]>([]);
@@ -153,12 +151,9 @@ export default function BinListPage({ token }: Props) {
         kind: form.kind,
       },
     };
-    const next = editId
-      ? rows.map((r) => (r.id === editId ? nextRow : r))
-      : [nextRow, ...rows];
     setBusy(true);
     try {
-      await persist(next);
+      await saveRow(nextRow);
       closeModal();
       setDbError("");
     } catch {
@@ -172,7 +167,7 @@ export default function BinListPage({ token }: Props) {
     if (!deleteId) return;
     setBusy(true);
     try {
-      await persist(rows.filter((r) => r.id !== deleteId));
+      await removeRow(deleteId);
       setDeleteId(null);
     } catch {
       setError("Silme başarısız.");

@@ -29,7 +29,7 @@ type Props = { token: string };
 
 /** Bankalar — MySQL; BIN seçimi + AnyPay /v1/tahsilat/banks */
 export default function BanksListPage({ token }: Props) {
-  const { rows, loading, persist } = useTahsilatDb(token, "banks");
+  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "banks");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -151,12 +151,9 @@ export default function BanksListPage({ token }: Props) {
         xmlUrl: form.xmlUrl.trim(),
       },
     };
-    const next = editId
-      ? rows.map((r) => (r.id === editId ? nextRow : r))
-      : [nextRow, ...rows];
     setBusy(true);
     try {
-      await persist(next);
+      await saveRow(nextRow);
       closeModal();
     } catch {
       setError("Kayıt veritabanına yazılamadı.");
@@ -169,7 +166,7 @@ export default function BanksListPage({ token }: Props) {
     if (!deleteId) return;
     setBusy(true);
     try {
-      await persist(rows.filter((r) => r.id !== deleteId));
+      await removeRow(deleteId);
       setDeleteId(null);
     } catch {
       setError("Silme başarısız.");

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Mail, Save, Send } from "lucide-react";
+import { useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
-type EmailSettings = {
+type EmailForm = {
   host: string;
   port: string;
   address: string;
@@ -11,43 +12,51 @@ type EmailSettings = {
   tls: boolean;
 };
 
-const STORAGE_KEY = "gtk_tahsilat_email_settings_v1";
-
-const DEFAULTS: EmailSettings = {
+const DEFAULTS: EmailForm = {
   host: "smtp.gmail.com",
   port: "465",
-  address: "sitebildirim@gmail.com",
+  address: "",
   password: "",
   ssl: true,
   tls: true,
 };
 
-function loadSettings(): EmailSettings {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (raw && typeof raw === "object") {
-      return {
-        host: String(raw.host ?? DEFAULTS.host),
-        port: String(raw.port ?? DEFAULTS.port),
-        address: String(raw.address ?? DEFAULTS.address),
-        password: String(raw.password ?? ""),
-        ssl: raw.ssl !== false,
-        tls: raw.tls !== false,
-      };
-    }
-  } catch {
-    /* varsayılan */
-  }
-  return { ...DEFAULTS };
+type Props = { token: string };
+
+function flag(v: string | number | boolean | null | undefined) {
+  if (v === true || v === 1 || v === "1" || v === "true") return true;
+  if (v === false || v === 0 || v === "0" || v === "false") return false;
+  return true;
 }
 
-/** Sistem → E-Posta Ayarları */
-export default function EmailSettingsPage() {
-  const [form, setForm] = useState<EmailSettings>(loadSettings);
+/** Sistem → E-Posta Ayarları — MySQL (tek satır) */
+export default function EmailSettingsPage({ token }: Props) {
+  const { rows, loading, saveRow } = useTahsilatDb(token, "email-settings");
+  const [form, setForm] = useState<EmailForm>(DEFAULTS);
+  const [rowId, setRowId] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const [testTo, setTestTo] = useState("");
   const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const row = rows[0];
+    if (!row) {
+      setRowId(null);
+      setForm(DEFAULTS);
+      return;
+    }
+    setRowId(row.id);
+    setForm({
+      host: String(row.data.host ?? DEFAULTS.host),
+      port: String(row.data.port ?? DEFAULTS.port),
+      address: String(row.data.address ?? ""),
+      password: String(row.data.password ?? ""),
+      ssl: flag(row.data.ssl),
+      tls: flag(row.data.tls),
+    });
+  }, [rows]);
 
   useEffect(() => {
     if (!savedFlash) return;
@@ -61,7 +70,7 @@ export default function EmailSettingsPage() {
     return () => window.clearTimeout(t);
   }, [testMsg]);
 
-  function onSave() {
+  async function onSave() {
     const host = form.host.trim();
     const port = form.port.trim();
     const address = form.address.trim();
@@ -77,11 +86,27 @@ export default function EmailSettingsPage() {
       setError("Geçerli bir e-posta adresi girin.");
       return;
     }
-    const next = { ...form, host, port, address };
-    setForm(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    setBusy(true);
     setError("");
-    setSavedFlash(true);
+    try {
+      await saveRow({
+        id: rowId || `new-${Date.now()}`,
+        active: true,
+        data: {
+          host,
+          port,
+          address,
+          password: form.password,
+          ssl: form.ssl ? "1" : "0",
+          tls: form.tls ? "1" : "0",
+        },
+      });
+      setSavedFlash(true);
+    } catch {
+      setError("Ayarlar veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function onTestSend() {
@@ -94,7 +119,6 @@ export default function EmailSettingsPage() {
       setTestMsg({ ok: false, text: "Önce sunucu ayarlarını kaydedin." });
       return;
     }
-    /* UI iskeleti — gerçek SMTP gönderimi API sonrası */
     setTestMsg({
       ok: true,
       text: `Sınama kaydı alındı → ${to} (gönderim API bağlanınca aktif olur).`,
@@ -114,15 +138,21 @@ export default function EmailSettingsPage() {
             />
             E-Posta Ayarları
           </h1>
-          <p>Sistem e-posta gönderim ayarlarını buradan yönetin</p>
+          <p>Sistem e-posta gönderim ayarlarını buradan yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add primary-solid" onClick={onSave}>
+        <button
+          type="button"
+          className="bin-add primary-solid"
+          onClick={() => void onSave()}
+          disabled={busy || loading}
+        >
           <Save size={18} />
           Kaydet
         </button>
       </div>
 
       <section className="bin-panel mail-panel">
+        {loading ? <p className="bin-hint">Yükleniyor…</p> : null}
         <div className="mail-grid">
           <div className="bin-field">
             <label htmlFor="mail-host">E-Posta Sunucusu</label>
@@ -180,7 +210,6 @@ export default function EmailSettingsPage() {
               className={`vpos-switch ${form.ssl ? "on" : ""}`}
               role="switch"
               aria-checked={form.ssl}
-              aria-label="SSL"
               onClick={() => setForm((f) => ({ ...f, ssl: !f.ssl }))}
             >
               <span />
@@ -196,7 +225,6 @@ export default function EmailSettingsPage() {
               className={`vpos-switch ${form.tls ? "on" : ""}`}
               role="switch"
               aria-checked={form.tls}
-              aria-label="TLS"
               onClick={() => setForm((f) => ({ ...f, tls: !f.tls }))}
             >
               <span />

@@ -5,7 +5,12 @@ import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders
 import { initDatabase, pool, withTransaction } from "./database.js";
 import { databaseSchema, databaseTableRows } from "./schemaExplorer.js";
 import { folderBundle, recordFolderUsage } from "./folderBundles.js";
-import { adminListTahsilat, adminReplaceTahsilat } from "./tahsilatAdminService.js";
+import {
+  adminBulkUpsertTahsilat,
+  adminDeleteTahsilatRow,
+  adminListTahsilat,
+  adminUpsertTahsilatRow,
+} from "./tahsilatAdminService.js";
 import { ensureAllTahsilatCatalog, TAHSILAT_RESOURCES } from "./tahsilatCatalog.js";
 import { saveImage } from "./uploads.js";
 import { quotaLimit, recordKeyUsage } from "./keyQuota.js";
@@ -122,9 +127,38 @@ adminRoutes.get("/admin/tahsilat", async (_request, response) => {
 adminRoutes.get("/admin/tahsilat/:resource", async (request, response) => {
   response.json({ success: true, data: await adminListTahsilat(String(request.params.resource)) });
 });
+/** Tek satır ekle */
+adminRoutes.post("/admin/tahsilat/:resource", async (request, response) => {
+  response.status(201).json({
+    success: true,
+    data: await adminUpsertTahsilatRow(String(request.params.resource), {
+      active: request.body?.active,
+      data: request.body?.data ?? request.body,
+    }),
+  });
+});
+/** Tek satır güncelle */
+adminRoutes.put("/admin/tahsilat/:resource/:id", async (request, response) => {
+  response.json({
+    success: true,
+    data: await adminUpsertTahsilatRow(String(request.params.resource), {
+      id: request.params.id,
+      active: request.body?.active,
+      data: request.body?.data ?? request.body,
+    }),
+  });
+});
+/** Tek satır sil */
+adminRoutes.delete("/admin/tahsilat/:resource/:id", async (request, response) => {
+  response.json({
+    success: true,
+    data: await adminDeleteTahsilatRow(String(request.params.resource), String(request.params.id)),
+  });
+});
+/** Toplu ekle/güncelle (silmez) */
 adminRoutes.put("/admin/tahsilat/:resource", async (request, response) => {
   const rows = Array.isArray(request.body?.rows) ? request.body.rows : request.body;
-  response.json({ success: true, data: await adminReplaceTahsilat(String(request.params.resource), rows) });
+  response.json({ success: true, data: await adminBulkUpsertTahsilat(String(request.params.resource), rows) });
 });
 
 adminRoutes.get("/admin/api-keys", async (_request, response) => {

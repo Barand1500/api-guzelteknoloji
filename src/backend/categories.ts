@@ -304,7 +304,9 @@ export async function saveRows(categoryId: number, inputRows: any[]) {
     const [existing] = await connection.query<any[]>(`SELECT id FROM ${table}`);
     const remaining = new Set(existing.map(row => String(row.id)));
     for (const row of inputRows) {
-      const id = typeof row.id === "string" && /^[1-9]\d*$/.test(row.id) && remaining.has(row.id) ? Number(row.id) : null;
+      // id string veya number olabilir — sadece gerçekten var olan satırlar güncellenir
+      const idRaw = row.id == null ? "" : String(row.id);
+      const id = /^[1-9]\d*$/.test(idRaw) && remaining.has(idRaw) ? Number(idRaw) : null;
       const values = fields.map(field => dataValue(row.data?.[String(field.id)] ?? row.data?.[field.name], field.field_type));
       const names = [...(id === null ? [] : ["id"]), "active", ...fields.map(field => field.sql_name!)];
       const inserts = [...(id === null ? [] : [id]), row.active === false ? 0 : 1, ...values];

@@ -12,7 +12,7 @@ type Props = { token: string };
 
 /** İller — MySQL /v1/tahsilat/provinces */
 export default function ProvincesListPage({ token }: Props) {
-  const { rows, loading, persist } = useTahsilatDb(token, "provinces");
+  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "provinces");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -88,10 +88,9 @@ export default function ProvincesListPage({ token }: Props) {
       active: form.active,
       data: { name, plateCode: form.plateCode.trim() },
     };
-    const next = editId ? rows.map((r) => (r.id === editId ? nextRow : r)) : [nextRow, ...rows];
     setBusy(true);
     try {
-      await persist(next);
+      await saveRow(nextRow);
       closeModal();
     } catch {
       setError("Kayıt veritabanına yazılamadı.");
@@ -104,7 +103,7 @@ export default function ProvincesListPage({ token }: Props) {
     if (!deleteId) return;
     setBusy(true);
     try {
-      await persist(rows.filter((r) => r.id !== deleteId));
+      await removeRow(deleteId);
       setDeleteId(null);
     } catch {
       setError("Silme başarısız.");

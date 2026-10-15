@@ -1,57 +1,26 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, FileText, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import type { TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
-export type ContractRow = {
-  id: string;
-  name: string;
-  active: boolean;
-};
-
 type FormState = { name: string; active: boolean };
-
-const STORAGE_KEY = "gtk_tahsilat_contracts_v1";
 const emptyForm: FormState = { name: "", active: true };
 
-const SAMPLE: ContractRow[] = [
-  { id: "ct1", name: "KVKK ve Aydınlatma Metni", active: true },
-  { id: "ct2", name: "Hizmet Sözleşmesi", active: true },
-  { id: "ct3", name: "Güvenlik Bilgilendirmesi", active: true },
-  { id: "ct4", name: "Tahsilat Sözleşmesi", active: true },
-  { id: "ct5", name: "İptal ve İade Politikası", active: true },
-  { id: "ct6", name: "İletişim Bilgileri", active: true },
-  { id: "ct7", name: "Üyelik Sözleşmesi", active: true },
-];
+type Props = { token: string };
 
-function loadRows(): ContractRow[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (Array.isArray(raw) && raw.length) return raw as ContractRow[];
-  } catch {
-    /* örnek */
-  }
-  return SAMPLE.map((r) => ({ ...r }));
-}
-
-function uid() {
-  return `ctr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** Sözleşmeler — şablon listesi (içerik metni sonra) */
-export default function ContractsListPage() {
-  const [rows, setRows] = useState<ContractRow[]>(loadRows);
+/** Sözleşmeler — MySQL */
+export default function ContractsListPage({ token }: Props) {
+  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "contracts");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
-  }, [rows]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -81,7 +50,7 @@ export default function ContractsListPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     if (!q) return rows;
-    return rows.filter((r) => r.name.toLocaleLowerCase("tr-TR").includes(q));
+    return rows.filter((r) => str(r, "name").toLocaleLowerCase("tr-TR").includes(q));
   }, [rows, query]);
 
   function openCreate() {
@@ -91,9 +60,9 @@ export default function ContractsListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: ContractRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
-    setForm({ name: row.name, active: row.active });
+    setForm({ name: str(row, "name"), active: row.active !== false });
     setError("");
     setModalOpen(true);
   }
@@ -104,7 +73,7 @@ export default function ContractsListPage() {
     setError("");
   }
 
-  function save() {
+  async function onSave() {
     const name = form.name.trim();
     if (!name) {
       setError("Sözleşme adı gerekli.");
@@ -113,27 +82,38 @@ export default function ContractsListPage() {
     const dup = rows.some(
       (r) =>
         r.id !== editId &&
-        r.name.toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
+        str(r, "name").toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
     );
     if (dup) {
       setError("Bu sözleşme adı zaten var.");
       return;
     }
-    const next: ContractRow = {
-      id: editId || uid(),
-      name,
-      active: form.active,
-    };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeModal();
+    setBusy(true);
+    try {
+      await saveRow({
+        id: editId || `new-${Date.now()}`,
+        active: form.active,
+        data: { name },
+      });
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await removeRow(deleteId);
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -149,9 +129,9 @@ export default function ContractsListPage() {
             />
             Sözleşmeler
           </h1>
-          <p>Sözleşme şablonlarını görüntüleyin ve yönetin</p>
+          <p>Sözleşme şablonlarını görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           Yeni Sözleşme
         </button>
@@ -184,29 +164,21 @@ export default function ContractsListPage() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.name}</td>
+                    <td>{str(row, "name")}</td>
                     <td>
-                      <span className={`vpos-status ${row.active ? "on" : "off"}`}>
-                        {row.active ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active ? "Aktif" : "Pasif"}
+                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+                        {row.active !== false ? "Aktif" : "Pasif"}
                       </span>
                     </td>
                     <td>
                       <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
+                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
                           <Pencil size={16} />
                         </button>
                         <button
                           type="button"
                           className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
                           onClick={() => setDeleteId(row.id)}
                         >
                           <Trash2 size={16} />
@@ -219,8 +191,7 @@ export default function ContractsListPage() {
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz sözleşme yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk sözleşmeyi ekleyin."}</span>
+              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz sözleşme yok"}</strong>
             </div>
           )}
         </div>
@@ -228,33 +199,24 @@ export default function ContractsListPage() {
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="ctr-modal-title"
-            style={{ width: "min(440px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(440px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
-                <h2 id="ctr-modal-title">{editId ? "Sözleşme Düzenle" : "Yeni Sözleşme"}</h2>
+                <h2>{editId ? "Sözleşme Düzenle" : "Yeni Sözleşme"}</h2>
                 <p>Sözleşme bilgilerini girin.</p>
               </div>
-              <button type="button" className="bin-modal-close" onClick={closeModal} aria-label="Kapat">
+              <button type="button" className="bin-modal-close" onClick={closeModal}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-body">
               <div className="bin-field">
-                <label htmlFor="ctr-name">
+                <label>
                   Ad <em>*</em>
                 </label>
                 <input
-                  id="ctr-name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Ad"
                   autoFocus
                 />
               </div>
@@ -268,21 +230,16 @@ export default function ContractsListPage() {
                   className={`vpos-switch ${form.active ? "on" : ""}`}
                   role="switch"
                   aria-checked={form.active}
-                  aria-label="Aktif"
                   onClick={() => setForm((f) => ({ ...f, active: !f.active }))}
                 >
                   <span />
                 </button>
               </div>
-              {error ? (
-                <span className="bin-modal-error" role="alert">
-                  {error}
-                </span>
-              ) : null}
+              {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={save}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void onSave()} disabled={busy}>
+                Kaydet
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -294,30 +251,18 @@ export default function ContractsListPage() {
 
       {deleteId ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="ctr-del-title"
-            style={{ width: "min(400px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(400px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
-                <h2 id="ctr-del-title">Sözleşme silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak.</p>
+                <h2>Sözleşme silinsin mi?</h2>
+                <p>Veritabanından kaldırılacak.</p>
               </div>
-              <button
-                type="button"
-                className="bin-modal-close"
-                onClick={() => setDeleteId(null)}
-                aria-label="Kapat"
-              >
+              <button type="button" className="bin-modal-close" onClick={() => setDeleteId(null)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button type="button" className="primary" onClick={() => void confirmDelete()} disabled={busy}>
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

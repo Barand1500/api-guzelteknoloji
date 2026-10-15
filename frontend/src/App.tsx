@@ -202,21 +202,21 @@ export default function App() {
         <Guide onStart={() => void startTour()} onOpen={openGuideChapter} hasCategory={Boolean(guideCategory)} />
       ) : view === "tahsilat" ? (
         tahsilatPage === "ozet" ? (
-          <OverviewPage />
+          <OverviewPage token={token} />
         ) : tahsilatPage === "firmalar" ? (
-          <CompaniesListPage />
+          <CompaniesListPage token={token} />
         ) : tahsilatPage === "odeme-bin" ? (
           <BinListPage token={token} />
         ) : tahsilatPage === "odeme-bankalar" ? (
           <BanksListPage token={token} />
         ) : tahsilatPage === "odeme-sanal-pos" ? (
-          <VirtualPosListPage />
+          <VirtualPosListPage token={token} />
         ) : tahsilatPage === "genel-para" ? (
-          <CurrenciesListPage />
+          <CurrenciesListPage token={token} />
         ) : tahsilatPage === "genel-sozlesmeler" ? (
-          <ContractsListPage />
+          <ContractsListPage token={token} />
         ) : tahsilatPage === "genel-vergi" ? (
-          <TaxOfficesListPage />
+          <TaxOfficesListPage token={token} />
         ) : tahsilatPage === "kart-tipler" ? (
           <CardTypesListPage token={token} />
         ) : tahsilatPage === "kart-turler" ? (
@@ -228,11 +228,11 @@ export default function App() {
         ) : tahsilatPage === "cografi-ilceler" ? (
           <DistrictsListPage token={token} />
         ) : tahsilatPage === "sistem-moduller" ? (
-          <ModulesListPage />
+          <ModulesListPage token={token} />
         ) : tahsilatPage === "sistem-sablon" ? (
-          <TemplateVarsListPage />
+          <TemplateVarsListPage token={token} />
         ) : tahsilatPage === "sistem-eposta" ? (
-          <EmailSettingsPage />
+          <EmailSettingsPage token={token} />
         ) : (
           <TahsilatPlaceholder page={tahsilatPage} />
         )

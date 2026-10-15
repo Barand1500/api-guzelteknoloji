@@ -1,57 +1,26 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import type { TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
-export type TaxOfficeRow = {
-  id: string;
-  name: string;
-  active: boolean;
-};
-
 type FormState = { name: string; active: boolean };
-
-const STORAGE_KEY = "gtk_tahsilat_tax_offices_v1";
 const emptyForm: FormState = { name: "", active: true };
 
-const SAMPLE: TaxOfficeRow[] = [
-  { id: "to1", name: "100. Yıl İhtisas V.D.", active: true },
-  { id: "to2", name: "19 Mayıs Ballıca V.D.", active: true },
-  { id: "to3", name: "19 Mayıs V.D.", active: true },
-  { id: "to4", name: "23 Temmuz V.D.", active: true },
-  { id: "to5", name: "5 Ocak V.D.", active: true },
-  { id: "to6", name: "Çankaya V.D.", active: true },
-  { id: "to7", name: "Kadıköy V.D.", active: true },
-];
+type Props = { token: string };
 
-function loadRows(): TaxOfficeRow[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (Array.isArray(raw) && raw.length) return raw as TaxOfficeRow[];
-  } catch {
-    /* örnek */
-  }
-  return SAMPLE.map((r) => ({ ...r }));
-}
-
-function uid() {
-  return `tax-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** Vergi Daireleri — Genel Tanımlar */
-export default function TaxOfficesListPage() {
-  const [rows, setRows] = useState<TaxOfficeRow[]>(loadRows);
+/** Vergi Daireleri — MySQL */
+export default function TaxOfficesListPage({ token }: Props) {
+  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "tax-offices");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
-  }, [rows]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -81,7 +50,7 @@ export default function TaxOfficesListPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     if (!q) return rows;
-    return rows.filter((r) => r.name.toLocaleLowerCase("tr-TR").includes(q));
+    return rows.filter((r) => str(r, "name").toLocaleLowerCase("tr-TR").includes(q));
   }, [rows, query]);
 
   function openCreate() {
@@ -91,9 +60,9 @@ export default function TaxOfficesListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: TaxOfficeRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
-    setForm({ name: row.name, active: row.active });
+    setForm({ name: str(row, "name"), active: row.active !== false });
     setError("");
     setModalOpen(true);
   }
@@ -104,7 +73,7 @@ export default function TaxOfficesListPage() {
     setError("");
   }
 
-  function save() {
+  async function onSave() {
     const name = form.name.trim();
     if (!name) {
       setError("Vergi dairesi adı gerekli.");
@@ -113,27 +82,38 @@ export default function TaxOfficesListPage() {
     const dup = rows.some(
       (r) =>
         r.id !== editId &&
-        r.name.toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
+        str(r, "name").toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
     );
     if (dup) {
       setError("Bu vergi dairesi zaten var.");
       return;
     }
-    const next: TaxOfficeRow = {
-      id: editId || uid(),
-      name,
-      active: form.active,
-    };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeModal();
+    setBusy(true);
+    try {
+      await saveRow({
+        id: editId || `new-${Date.now()}`,
+        active: form.active,
+        data: { name, code: "", province: "" },
+      });
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await removeRow(deleteId);
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -149,9 +129,9 @@ export default function TaxOfficesListPage() {
             />
             Vergi Daireleri
           </h1>
-          <p>Vergi dairelerini görüntüleyin ve yönetin</p>
+          <p>Vergi dairelerini görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           Yeni Vergi Dairesi
         </button>
@@ -184,29 +164,21 @@ export default function TaxOfficesListPage() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.name}</td>
+                    <td>{str(row, "name")}</td>
                     <td>
-                      <span className={`vpos-status ${row.active ? "on" : "off"}`}>
-                        {row.active ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active ? "Aktif" : "Pasif"}
+                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+                        {row.active !== false ? "Aktif" : "Pasif"}
                       </span>
                     </td>
                     <td>
                       <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
+                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
                           <Pencil size={16} />
                         </button>
                         <button
                           type="button"
                           className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
                           onClick={() => setDeleteId(row.id)}
                         >
                           <Trash2 size={16} />
@@ -219,8 +191,7 @@ export default function TaxOfficesListPage() {
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz vergi dairesi yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk vergi dairesini ekleyin."}</span>
+              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz vergi dairesi yok"}</strong>
             </div>
           )}
         </div>
@@ -228,33 +199,24 @@ export default function TaxOfficesListPage() {
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="tax-modal-title"
-            style={{ width: "min(440px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(440px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
-                <h2 id="tax-modal-title">{editId ? "Vergi Dairesi Düzenle" : "Yeni Vergi Dairesi"}</h2>
+                <h2>{editId ? "Vergi Dairesi Düzenle" : "Yeni Vergi Dairesi"}</h2>
                 <p>Vergi dairesi bilgilerini girin.</p>
               </div>
-              <button type="button" className="bin-modal-close" onClick={closeModal} aria-label="Kapat">
+              <button type="button" className="bin-modal-close" onClick={closeModal}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-body">
               <div className="bin-field">
-                <label htmlFor="tax-name">
+                <label>
                   Ad <em>*</em>
                 </label>
                 <input
-                  id="tax-name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Ad"
                   autoFocus
                 />
               </div>
@@ -268,21 +230,16 @@ export default function TaxOfficesListPage() {
                   className={`vpos-switch ${form.active ? "on" : ""}`}
                   role="switch"
                   aria-checked={form.active}
-                  aria-label="Aktif"
                   onClick={() => setForm((f) => ({ ...f, active: !f.active }))}
                 >
                   <span />
                 </button>
               </div>
-              {error ? (
-                <span className="bin-modal-error" role="alert">
-                  {error}
-                </span>
-              ) : null}
+              {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={save}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void onSave()} disabled={busy}>
+                Kaydet
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -294,30 +251,18 @@ export default function TaxOfficesListPage() {
 
       {deleteId ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="tax-del-title"
-            style={{ width: "min(400px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(400px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
-                <h2 id="tax-del-title">Vergi dairesi silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak.</p>
+                <h2>Vergi dairesi silinsin mi?</h2>
+                <p>Veritabanından kaldırılacak.</p>
               </div>
-              <button
-                type="button"
-                className="bin-modal-close"
-                onClick={() => setDeleteId(null)}
-                aria-label="Kapat"
-              >
+              <button type="button" className="bin-modal-close" onClick={() => setDeleteId(null)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button type="button" className="primary" onClick={() => void confirmDelete()} disabled={busy}>
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

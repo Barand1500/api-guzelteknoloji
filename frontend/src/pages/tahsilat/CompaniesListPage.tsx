@@ -13,13 +13,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import {
-  licenseBadge,
-  loadCompanies,
-  newCompanyId,
-  saveCompanies,
-  type CompanyRow,
-} from "./companiesStore";
+import type { TahsilatAdminRow } from "./tahsilatApi";
+import { licenseBadge } from "./companiesStore";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
 type FormState = {
@@ -52,37 +48,41 @@ const emptyForm = (): FormState => ({
   licenseEndsAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
 });
 
-function rowToForm(row: CompanyRow): FormState {
+function flag(v: string | number | boolean | null | undefined) {
+  if (v === false || v === 0 || v === "0" || v === "false") return false;
+  return true;
+}
+
+function rowToForm(row: TahsilatAdminRow): FormState {
   return {
-    name: row.name,
-    active: row.active,
-    domain: row.domain,
-    domainActive: row.domainActive,
-    dbHost: row.dbHost,
-    dbPort: row.dbPort,
-    dbName: row.dbName,
-    dbUser: row.dbUser,
-    dbPassword: row.dbPassword,
-    dbActive: row.dbActive,
-    frontendPath: row.frontendPath,
-    licenseEndsAt: row.licenseEndsAt.slice(0, 10),
+    name: str(row, "name"),
+    active: row.active !== false,
+    domain: str(row, "domain"),
+    domainActive: flag(row.data.domainActive),
+    dbHost: str(row, "dbHost"),
+    dbPort: str(row, "dbPort") || "3306",
+    dbName: str(row, "dbName"),
+    dbUser: str(row, "dbUser"),
+    dbPassword: str(row, "dbPassword"),
+    dbActive: flag(row.data.dbActive),
+    frontendPath: str(row, "frontendPath"),
+    licenseEndsAt: str(row, "licenseEndsAt").slice(0, 10),
   };
 }
 
-/** Firmalar */
-export default function CompaniesListPage() {
-  const [rows, setRows] = useState<CompanyRow[]>(loadCompanies);
+type Props = { token: string };
+
+/** Firmalar — MySQL */
+export default function CompaniesListPage({ token }: Props) {
+  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "companies");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    saveCompanies(rows);
-  }, [rows]);
 
   const anyModal = modalOpen || Boolean(deleteId);
 
@@ -116,9 +116,11 @@ export default function CompaniesListPage() {
     return rows
       .filter((r) => {
         if (!q) return true;
-        return `${r.name} ${r.domain} ${r.dbName}`.toLocaleLowerCase("tr-TR").includes(q);
+        return `${str(r, "name")} ${str(r, "domain")} ${str(r, "dbName")}`
+          .toLocaleLowerCase("tr-TR")
+          .includes(q);
       })
-      .sort((a, b) => a.name.localeCompare(b.name, "tr"));
+      .sort((a, b) => str(a, "name").localeCompare(str(b, "name"), "tr"));
   }, [rows, query]);
 
   function openCreate() {
@@ -128,7 +130,7 @@ export default function CompaniesListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: CompanyRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
     setForm(rowToForm(row));
     setError("");
@@ -141,7 +143,7 @@ export default function CompaniesListPage() {
     setError("");
   }
 
-  function onSave() {
+  async function onSave() {
     const name = form.name.trim();
     const domain = form.domain.trim().toLocaleLowerCase("tr-TR");
     if (!name) {
@@ -163,43 +165,58 @@ export default function CompaniesListPage() {
     const dup = rows.some(
       (r) =>
         r.id !== editId &&
-        (r.domain.toLocaleLowerCase("tr-TR") === domain ||
-          r.name.toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR")),
+        (str(r, "domain").toLocaleLowerCase("tr-TR") === domain ||
+          str(r, "name").toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR")),
     );
     if (dup) {
       setError("Bu firma adı veya domain zaten var.");
       return;
     }
+    let dbPassword = form.dbPassword;
+    if (editId && !form.dbPassword.trim()) {
+      dbPassword = str(rows.find((r) => r.id === editId)!, "dbPassword");
+    }
     const licenseEndsAt = form.licenseEndsAt
       ? new Date(`${form.licenseEndsAt}T23:59:59`).toISOString()
       : new Date().toISOString();
-    const next: CompanyRow = {
-      id: editId || newCompanyId(),
-      name,
-      active: form.active,
-      domain,
-      domainActive: form.domainActive,
-      dbHost: form.dbHost.trim(),
-      dbPort: form.dbPort.trim(),
-      dbName: form.dbName.trim(),
-      dbUser: form.dbUser.trim(),
-      dbPassword: form.dbPassword,
-      dbActive: form.dbActive,
-      frontendPath: form.frontendPath.trim(),
-      licenseEndsAt,
-    };
-    if (editId && !form.dbPassword.trim()) {
-      const prev = rows.find((r) => r.id === editId);
-      next.dbPassword = prev?.dbPassword || "";
+    setBusy(true);
+    try {
+      await saveRow({
+        id: editId || `new-${Date.now()}`,
+        active: form.active,
+        data: {
+          name,
+          domain,
+          domainActive: form.domainActive ? "1" : "0",
+          dbHost: form.dbHost.trim(),
+          dbPort: form.dbPort.trim(),
+          dbName: form.dbName.trim(),
+          dbUser: form.dbUser.trim(),
+          dbPassword,
+          dbActive: form.dbActive ? "1" : "0",
+          frontendPath: form.frontendPath.trim(),
+          licenseEndsAt,
+        },
+      });
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
     }
-    setRows((prev) => (editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev]));
-    closeModal();
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await removeRow(deleteId);
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -215,9 +232,9 @@ export default function CompaniesListPage() {
             />
             Firmalar
           </h1>
-          <p>Kayıtlı firmaları, domain ve veritabanı bilgilerini yönetin</p>
+          <p>Kayıtlı firmaları, domain ve veritabanı bilgilerini yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           Yeni Firma
         </button>
@@ -253,18 +270,18 @@ export default function CompaniesListPage() {
               </thead>
               <tbody>
                 {filtered.map((row) => {
-                  const lic = licenseBadge(row.licenseEndsAt);
+                  const lic = licenseBadge(str(row, "licenseEndsAt"));
                   return (
                     <tr key={row.id}>
-                      <td>{row.name}</td>
-                      <td>{row.domain}</td>
+                      <td>{str(row, "name")}</td>
+                      <td>{str(row, "domain")}</td>
                       <td>
                         <span className={`firm-lic tone-${lic.tone}`}>{lic.label}</span>
                       </td>
                       <td>
-                        <span className={`vpos-status ${row.active ? "on" : "off"}`}>
-                          {row.active ? <Check size={14} strokeWidth={2.4} /> : null}
-                          {row.active ? "Aktif" : "Pasif"}
+                        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+                          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+                          {row.active !== false ? "Aktif" : "Pasif"}
                         </span>
                       </td>
                       <td>
@@ -272,26 +289,16 @@ export default function CompaniesListPage() {
                           <button
                             type="button"
                             className="bin-icon-btn success"
-                            title="Detay"
-                            aria-label="Detay"
                             onClick={() => openEdit(row)}
                           >
                             <List size={16} />
                           </button>
-                          <button
-                            type="button"
-                            className="bin-icon-btn"
-                            title="Düzenle"
-                            aria-label="Düzenle"
-                            onClick={() => openEdit(row)}
-                          >
+                          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
                             <Pencil size={16} />
                           </button>
                           <button
                             type="button"
                             className="bin-icon-btn danger"
-                            title="Sil"
-                            aria-label="Sil"
                             onClick={() => setDeleteId(row.id)}
                           >
                             <Trash2 size={16} />
@@ -305,8 +312,7 @@ export default function CompaniesListPage() {
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz firma yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "Yeni Firma ile başlayın."}</span>
+              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz firma yok"}</strong>
             </div>
           )}
         </div>
@@ -314,19 +320,13 @@ export default function CompaniesListPage() {
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal firm-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="firm-modal-title"
-          >
+          <div ref={modalRef} className="bin-modal firm-modal" role="dialog" aria-modal="true">
             <div className="bin-modal-head">
               <div>
-                <h2 id="firm-modal-title">{editId ? "Firma Düzenle" : "Yeni Firma"}</h2>
+                <h2>{editId ? "Firma Düzenle" : "Yeni Firma"}</h2>
                 <p>Firma, domain ve veritabanı bilgilerini birlikte girin.</p>
               </div>
-              <button type="button" className="bin-modal-close" onClick={closeModal} aria-label="Kapat">
+              <button type="button" className="bin-modal-close" onClick={closeModal}>
                 <X size={18} />
               </button>
             </div>
@@ -339,21 +339,18 @@ export default function CompaniesListPage() {
                   <h3>Firma Bilgileri</h3>
                 </header>
                 <div className="bin-field">
-                  <label htmlFor="firm-name">
+                  <label>
                     Firma Adı <em>*</em>
                   </label>
                   <input
-                    id="firm-name"
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    placeholder="Firma Adı"
                     autoFocus
                   />
                 </div>
                 <div className="bin-field">
-                  <label htmlFor="firm-lic">Lisans Bitiş</label>
+                  <label>Lisans Bitiş</label>
                   <input
-                    id="firm-lic"
                     type="date"
                     value={form.licenseEndsAt}
                     onChange={(e) => setForm((f) => ({ ...f, licenseEndsAt: e.target.value }))}
@@ -384,14 +381,12 @@ export default function CompaniesListPage() {
                   <h3>Domain Ayarları</h3>
                 </header>
                 <div className="bin-field">
-                  <label htmlFor="firm-domain">
+                  <label>
                     Domain <em>*</em>
                   </label>
                   <input
-                    id="firm-domain"
                     value={form.domain}
                     onChange={(e) => setForm((f) => ({ ...f, domain: e.target.value }))}
-                    placeholder="demo.anypay.com.tr"
                   />
                 </div>
                 <div className="vpos-active-row">
@@ -420,56 +415,49 @@ export default function CompaniesListPage() {
                 </header>
                 <div className="bin-field-row">
                   <div className="bin-field">
-                    <label htmlFor="firm-host">
+                    <label>
                       Host <em>*</em>
                     </label>
                     <input
-                      id="firm-host"
                       value={form.dbHost}
                       onChange={(e) => setForm((f) => ({ ...f, dbHost: e.target.value }))}
-                      placeholder="127.0.0.1"
                     />
                   </div>
                   <div className="bin-field">
-                    <label htmlFor="firm-port">
+                    <label>
                       Port <em>*</em>
                     </label>
                     <input
-                      id="firm-port"
                       value={form.dbPort}
                       onChange={(e) => setForm((f) => ({ ...f, dbPort: e.target.value }))}
-                      placeholder="3306"
                     />
                   </div>
                 </div>
                 <div className="bin-field-row">
                   <div className="bin-field">
-                    <label htmlFor="firm-dbname">
+                    <label>
                       Veritabanı Adı <em>*</em>
                     </label>
                     <input
-                      id="firm-dbname"
                       value={form.dbName}
                       onChange={(e) => setForm((f) => ({ ...f, dbName: e.target.value }))}
                     />
                   </div>
                   <div className="bin-field">
-                    <label htmlFor="firm-dbuser">
+                    <label>
                       Kullanıcı Adı <em>*</em>
                     </label>
                     <input
-                      id="firm-dbuser"
                       value={form.dbUser}
                       onChange={(e) => setForm((f) => ({ ...f, dbUser: e.target.value }))}
                     />
                   </div>
                 </div>
                 <div className="bin-field">
-                  <label htmlFor="firm-dbpass">
+                  <label>
                     Şifre {!editId ? <em>*</em> : null}
                   </label>
                   <input
-                    id="firm-dbpass"
                     type="password"
                     value={form.dbPassword}
                     onChange={(e) => setForm((f) => ({ ...f, dbPassword: e.target.value }))}
@@ -502,29 +490,19 @@ export default function CompaniesListPage() {
                   <h3>Sunucu Dizini</h3>
                 </header>
                 <div className="bin-field">
-                  <label htmlFor="firm-path">Frontend Dizin Yolu</label>
+                  <label>Frontend Dizin Yolu</label>
                   <input
-                    id="firm-path"
                     value={form.frontendPath}
                     onChange={(e) => setForm((f) => ({ ...f, frontendPath: e.target.value }))}
-                    placeholder="/home/.../htdocs/..."
                   />
-                  <small className="bank-logo-hint">
-                    Sürüm dağıtımında ZIP bu dizine çıkartılır. Boş bırakılırsa bu firmaya dağıtım
-                    yapılmaz.
-                  </small>
                 </div>
               </section>
 
-              {error ? (
-                <span className="bin-modal-error" role="alert">
-                  {error}
-                </span>
-              ) : null}
+              {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={onSave}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void onSave()} disabled={busy}>
+                Kaydet
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -541,25 +519,19 @@ export default function CompaniesListPage() {
             className="bin-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="firm-del-title"
             style={{ width: "min(400px, 100%)" }}
           >
             <div className="bin-modal-head">
               <div>
-                <h2 id="firm-del-title">Firma silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak.</p>
+                <h2>Firma silinsin mi?</h2>
+                <p>Veritabanından kaldırılacak.</p>
               </div>
-              <button
-                type="button"
-                className="bin-modal-close"
-                onClick={() => setDeleteId(null)}
-                aria-label="Kapat"
-              >
+              <button type="button" className="bin-modal-close" onClick={() => setDeleteId(null)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button type="button" className="primary" onClick={() => void confirmDelete()} disabled={busy}>
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>
