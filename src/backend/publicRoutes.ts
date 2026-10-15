@@ -1,4 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import { ensureBinsCategory, lookupBinByDigits } from "./binsBootstrap.js";
 import { apiKeyForCategory, categoryBySlug, InputError, publicData } from "./categories.js";
 import { initDatabase, pool } from "./database.js";
 import { folderBundle, recordFolderUsage } from "./folderBundles.js";
@@ -14,6 +15,28 @@ async function serviceEnabled(_request: Request, response: Response, next: NextF
   next();
 }
 
+async function authorizeBins(request: Request) {
+  const category = await ensureBinsCategory();
+  const apiKey = String(request.headers["x-api-key"] || request.query.apiKey || "");
+  const [counts] = await pool.query<any[]>("SELECT COUNT(*) AS total FROM api_keys");
+  if (request.path.startsWith("/api/categories/") && Number(counts[0].total) === 0) {
+    return { category, keyId: null as string | null };
+  }
+  const key = await apiKeyForCategory(apiKey, category.id);
+  if (!key) throw new InputError("Bu API için geçerli bir X-API-Key gerekli", 401);
+  return { category, keyId: key.id as string };
+}
+
+async function serveBinsLookup(request: Request, response: Response) {
+  const { category, keyId } = await authorizeBins(request);
+  const digits = String(request.query.bin || request.query.card || request.query.digits || "");
+  const hit = await lookupBinByDigits(digits, publicBaseUrl(request));
+  if (keyId) {
+    await recordKeyUsage(keyId, { categoryId: category.id }, String(request.headers.origin || request.headers.referer || request.headers.host || ""));
+  }
+  response.json({ success: true, category: { id: category.id, name: category.name, slug: category.slug }, data: hit });
+}
+
 async function serveCategory(request: Request, response: Response) {
   const requestedSlug = String(request.params.slug).toLowerCase();
   const aliases: Record<string, string[]> = {
@@ -22,12 +45,19 @@ async function serveCategory(request: Request, response: Response) {
     banks: ["banks", "bankalar"],
     bins: ["bins", "bin", "bin-kayitlari"],
   };
+  // BIN: kategori yoksa otomatik oluştur
+  if (aliases.bins.includes(requestedSlug) || requestedSlug === "bins") {
+    await ensureBinsCategory();
+  }
   let category;
   try { category = await categoryBySlug(requestedSlug); }
   catch (error) {
     if (!(error instanceof InputError) || !aliases[requestedSlug]) throw error;
     for (const alias of aliases[requestedSlug]) {
       try { category = await categoryBySlug(alias); break; } catch { /* Try next alias. */ }
+    }
+    if (!category && aliases.bins.includes(requestedSlug)) {
+      category = await ensureBinsCategory();
     }
     if (!category) throw error;
   }
@@ -48,6 +78,9 @@ publicRoutes.get("/health", async (_request, response) => {
   const [rows] = await pool.query<any[]>("SELECT value FROM api_settings WHERE id=1");
   response.json({ success: true, enabled: rows[0]?.value !== "0", service: "guzel-teknoloji-api" });
 });
+/** BIN prefix lookup — /v1/:slug'dan önce tanımlanmalı */
+publicRoutes.get("/v1/bins/lookup", serviceEnabled, serveBinsLookup);
+publicRoutes.get("/api/categories/bins/lookup", serviceEnabled, serveBinsLookup);
 publicRoutes.get("/api/categories/:slug", serviceEnabled, serveCategory);
 publicRoutes.get("/v1/:slug", serviceEnabled, serveCategory);
 async function serveFolder(request: Request, response: Response) {

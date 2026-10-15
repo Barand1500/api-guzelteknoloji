@@ -12,9 +12,30 @@ import Appearance from "./pages/appearance/Appearance";
 import Guide from "./pages/guide/Guide";
 import GuideTour from "./pages/guide/GuideTour";
 import { guideSteps } from "./pages/guide/guideContent";
+import BanksListPage from "./pages/tahsilat/BanksListPage";
+import BinListPage from "./pages/tahsilat/BinListPage";
+import CardBrandsListPage from "./pages/tahsilat/CardBrandsListPage";
+import CardKindsListPage from "./pages/tahsilat/CardKindsListPage";
+import CardTypesListPage from "./pages/tahsilat/CardTypesListPage";
+import ContractsListPage from "./pages/tahsilat/ContractsListPage";
+import CurrenciesListPage from "./pages/tahsilat/CurrenciesListPage";
+import DistrictsListPage from "./pages/tahsilat/DistrictsListPage";
+import EmailSettingsPage from "./pages/tahsilat/EmailSettingsPage";
+import ModulesListPage from "./pages/tahsilat/ModulesListPage";
+import ProvincesListPage from "./pages/tahsilat/ProvincesListPage";
+import TahsilatPlaceholder from "./pages/tahsilat/TahsilatPlaceholder";
+import TaxOfficesListPage from "./pages/tahsilat/TaxOfficesListPage";
+import TemplateVarsListPage from "./pages/tahsilat/TemplateVarsListPage";
+import VirtualPosListPage from "./pages/tahsilat/VirtualPosListPage";
 import Layout from "./shared/Layout";
+import { isTahsilatPageId, type TahsilatPageId } from "./shared/tahsilatNav";
 import type { Category, PanelPage, PanelPreferences, View } from "./shared/types";
 import { request } from "./shared/api";
+
+function readTahsilatPage(): TahsilatPageId {
+  const stored = localStorage.getItem("gtk_tahsilat_page") || "";
+  return isTahsilatPageId(stored) ? stored : "ozet";
+}
 
 const defaultPreferences: PanelPreferences = {
   sidebarOrder: ["dashboard", "statistics", "playground", "schema-keys", "keys"],
@@ -34,6 +55,7 @@ export default function App() {
     [guideCategory, setGuideCategory] = useState<Category | null>(null);
   const [openedFolderId, setOpenedFolderId] = useState<number | null>(null);
   const [folderOpenSequence, setFolderOpenSequence] = useState(0);
+  const [tahsilatPage, setTahsilatPage] = useState<TahsilatPageId>(readTahsilatPage);
 
   useEffect(() => {
     if (view !== "guide" || !token) return;
@@ -148,6 +170,8 @@ export default function App() {
       preferences={preferences}
       savePreferences={savePreferences}
       preferencesError={preferencesError}
+      tahsilatPage={tahsilatPage}
+      setTahsilatPage={setTahsilatPage}
     >
       {view === "dashboard" ? (
         <Dashboard
@@ -174,6 +198,38 @@ export default function App() {
         <Appearance preferences={preferences} onSave={savePreferences} />
       ) : view === "guide" ? (
         <Guide onStart={() => void startTour()} onOpen={openGuideChapter} hasCategory={Boolean(guideCategory)} />
+      ) : view === "tahsilat" ? (
+        tahsilatPage === "odeme-bin" ? (
+          <BinListPage />
+        ) : tahsilatPage === "odeme-bankalar" ? (
+          <BanksListPage />
+        ) : tahsilatPage === "odeme-sanal-pos" ? (
+          <VirtualPosListPage />
+        ) : tahsilatPage === "genel-para" ? (
+          <CurrenciesListPage />
+        ) : tahsilatPage === "genel-sozlesmeler" ? (
+          <ContractsListPage />
+        ) : tahsilatPage === "genel-vergi" ? (
+          <TaxOfficesListPage />
+        ) : tahsilatPage === "kart-tipler" ? (
+          <CardTypesListPage />
+        ) : tahsilatPage === "kart-turler" ? (
+          <CardKindsListPage />
+        ) : tahsilatPage === "kart-markalar" ? (
+          <CardBrandsListPage />
+        ) : tahsilatPage === "cografi-iller" ? (
+          <ProvincesListPage />
+        ) : tahsilatPage === "cografi-ilceler" ? (
+          <DistrictsListPage />
+        ) : tahsilatPage === "sistem-moduller" ? (
+          <ModulesListPage />
+        ) : tahsilatPage === "sistem-sablon" ? (
+          <TemplateVarsListPage />
+        ) : tahsilatPage === "sistem-eposta" ? (
+          <EmailSettingsPage />
+        ) : (
+          <TahsilatPlaceholder page={tahsilatPage} />
+        )
       ) : (
         selected && (
           <CategoryEditor

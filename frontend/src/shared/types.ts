@@ -1,5 +1,16 @@
-export type View = "dashboard" | "new" | "keys" | "manage" | "statistics" | "playground" | "schema-keys" | "settings" | "appearance" | "guide";
-export type PanelPage = Exclude<View, "manage" | "guide">;
+export type View =
+  | "dashboard"
+  | "new"
+  | "keys"
+  | "manage"
+  | "statistics"
+  | "playground"
+  | "schema-keys"
+  | "settings"
+  | "appearance"
+  | "guide"
+  | "tahsilat";
+export type PanelPage = Exclude<View, "manage" | "guide" | "tahsilat">;
 export type PanelPreferences = { sidebarOrder: PanelPage[]; quickAccess: (PanelPage | null)[]; searchWidth: number; fontFamily: "inter" | "manrope" | "roboto-flex" | "ibm-plex-sans" };
 export type CategoryFolder = { id: number; name: string; parentId: number | null };
 export type Category = { id: number; name: string; slug: string; tableName?: string; active: boolean; icon?: string; folderId?: number | null; folderPath?: string };
