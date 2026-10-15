@@ -315,8 +315,8 @@ export default function CardBrandsListPage({ token }: Props) {
               ) : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={save}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void save()} disabled={busy}>
+                {busy ? "…" : editId ? "Güncelle" : "Kaydet"}
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
