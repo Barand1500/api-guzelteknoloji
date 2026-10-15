@@ -10,6 +10,7 @@ import { QuotaError } from "./keyQuota.js";
 import { initDatabase } from "./database.js";
 import { publicRoutes } from "./publicRoutes.js";
 import { searchRoutes } from "./search.js";
+import { tahsilatPublicRoutes } from "./tahsilatPublicRoutes.js";
 import { uploadDir } from "./uploads.js";
 
 const app = express();
@@ -22,7 +23,7 @@ app.use(cors({ origin: true }));
 app.use(express.json({ limit: "12mb" }));
 app.use(express.static(publicDir));
 app.use("/uploads", express.static(uploadDir, { immutable: true, maxAge: "1y" }));
-app.use(authRoutes, adminRoutes, searchRoutes, publicRoutes);
+app.use(authRoutes, adminRoutes, searchRoutes, tahsilatPublicRoutes, publicRoutes);
 app.get(/^(?!\/api|\/admin|\/auth|\/uploads).*/, (_request, response) => response.sendFile(path.join(publicDir, "index.html")));
 
 const errors: ErrorRequestHandler = (error, _request, response, _next) => {
