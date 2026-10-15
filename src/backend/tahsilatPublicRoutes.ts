@@ -13,7 +13,7 @@ import { completeTenantPayment, startTenantPayment } from "./payments/service.js
 import {
   ensureAllTahsilatCatalog,
   ensureTahsilatResource,
-  isTahsilatResource,
+  isPublicTahsilatResource,
   listTahsilatResource,
   TAHSILAT_RESOURCES,
   type TahsilatResource,
@@ -136,16 +136,13 @@ tahsilatPublicRoutes.get(
   serviceEnabled,
   async (request, response) => {
     const resource = String(request.params.resource || "").toLowerCase();
-    if (!isTahsilatResource(resource)) {
+    if (!isPublicTahsilatResource(resource)) {
       throw new InputError(
         `Bilinmeyen kaynak. Geçerli: ${TAHSILAT_RESOURCES.join(", ")}`,
         404,
       );
     }
     const { category, keyId } = await authorizeResource(request, resource);
-    if (resource === "companies" || resource === "email-settings") {
-      throw new InputError("Bu kaynak genel Tahsilat API üzerinden sunulmaz", 404);
-    }
     const result = await listTahsilatResource(resource, publicBaseUrl(request), {
       province: String(request.query.province || ""),
       il: String(request.query.il || ""),

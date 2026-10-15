@@ -329,6 +329,37 @@
   box-shadow: 0 0 0 3px rgba(31, 111, 216, 0.12);
 }
 
+.firm-password-field {
+  position: relative;
+}
+
+.firm-password-field input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.firm-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.firm-password-toggle:hover {
+  background: #eef4fc;
+  color: #1f6fd8;
+}
+
 .bin-field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

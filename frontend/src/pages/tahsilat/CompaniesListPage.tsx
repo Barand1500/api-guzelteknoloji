@@ -5,6 +5,8 @@ import {
   Check,
   Copy,
   Database,
+  Eye,
+  EyeOff,
   FolderOpen,
   Globe2,
   KeyRound,
@@ -87,6 +89,7 @@ export default function CompaniesListPage({ token }: Props) {
   const [busy, setBusy] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [keyBusyId, setKeyBusyId] = useState<string | null>(null);
+  const [showDbPassword, setShowDbPassword] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   const editingRow = editId ? rows.find((r) => r.id === editId) : null;
@@ -159,6 +162,7 @@ export default function CompaniesListPage({ token }: Props) {
   function openCreate() {
     setEditId(null);
     setForm(emptyForm());
+    setShowDbPassword(false);
     setError("");
     setModalOpen(true);
   }
@@ -166,6 +170,7 @@ export default function CompaniesListPage({ token }: Props) {
   function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
     setForm(rowToForm(row));
+    setShowDbPassword(false);
     setError("");
     setModalOpen(true);
   }
@@ -525,13 +530,25 @@ export default function CompaniesListPage({ token }: Props) {
                   <label>
                     Şifre {!editId ? <em>*</em> : null}
                   </label>
-                  <input
-                    type="password"
-                    value={form.dbPassword}
-                    onChange={(e) => setForm((f) => ({ ...f, dbPassword: e.target.value }))}
-                    placeholder={editId ? "Değiştirmek için yazın" : "••••••••"}
-                    autoComplete="new-password"
-                  />
+                  <div className="firm-password-field">
+                    <input
+                      type={showDbPassword ? "text" : "password"}
+                      value={form.dbPassword}
+                      onChange={(e) => setForm((f) => ({ ...f, dbPassword: e.target.value }))}
+                      placeholder={editId ? "Değiştirmek için yazın" : "••••••••"}
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      className="firm-password-toggle"
+                      aria-label={showDbPassword ? "Şifreyi gizle" : "Şifreyi göster"}
+                      title={showDbPassword ? "Şifreyi gizle" : "Şifreyi göster"}
+                      aria-pressed={showDbPassword}
+                      onClick={() => setShowDbPassword((visible) => !visible)}
+                    >
+                      {showDbPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
                 <div className="vpos-active-row">
                   <div>

@@ -49,6 +49,13 @@ export const TAHSILAT_RESOURCES: TahsilatResource[] = [
   "versions",
 ];
 
+/** Resources supported by the authenticated admin panel, including private records. */
+const TAHSILAT_ADMIN_RESOURCES: TahsilatResource[] = [
+  ...TAHSILAT_RESOURCES,
+  "companies",
+  "email-settings",
+];
+
 type ColDef = { name: string; fieldType: "text" | "integer" };
 
 const RESOURCE_META: Record<Exclude<TahsilatResource, "bins">, { name: string; slug: string; columns: ColDef[] }> = {
@@ -334,6 +341,10 @@ export async function ensureAllTahsilatCatalog() {
 }
 
 export function isTahsilatResource(value: string): value is TahsilatResource {
+  return (TAHSILAT_ADMIN_RESOURCES as string[]).includes(value);
+}
+
+export function isPublicTahsilatResource(value: string): value is TahsilatResource {
   return (TAHSILAT_RESOURCES as string[]).includes(value);
 }
 
