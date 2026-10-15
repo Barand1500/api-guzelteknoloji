@@ -28,6 +28,7 @@ import ProvincesListPage from "./pages/tahsilat/ProvincesListPage";
 import TahsilatPlaceholder from "./pages/tahsilat/TahsilatPlaceholder";
 import TaxOfficesListPage from "./pages/tahsilat/TaxOfficesListPage";
 import TemplateVarsListPage from "./pages/tahsilat/TemplateVarsListPage";
+import VersionsListPage from "./pages/tahsilat/VersionsListPage";
 import VirtualPosListPage from "./pages/tahsilat/VirtualPosListPage";
 import Layout from "./shared/Layout";
 import { isTahsilatPageId, type TahsilatPageId } from "./shared/tahsilatNav";
@@ -233,6 +234,8 @@ export default function App() {
           <TemplateVarsListPage token={token} />
         ) : tahsilatPage === "sistem-eposta" ? (
           <EmailSettingsPage token={token} />
+        ) : tahsilatPage === "sistem-surumler" ? (
+          <VersionsListPage token={token} />
         ) : (
           <TahsilatPlaceholder page={tahsilatPage} />
         )

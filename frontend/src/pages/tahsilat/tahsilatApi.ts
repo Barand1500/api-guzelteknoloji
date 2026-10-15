@@ -16,7 +16,8 @@ export type TahsilatResource =
   | "modules"
   | "template-vars"
   | "companies"
-  | "email-settings";
+  | "email-settings"
+  | "versions";
 
 export type TahsilatAdminRow = {
   id: string;

@@ -29,7 +29,8 @@ export type TahsilatResource =
   | "modules"
   | "template-vars"
   | "companies"
-  | "email-settings";
+  | "email-settings"
+  | "versions";
 
 export const TAHSILAT_RESOURCES: TahsilatResource[] = [
   "bins",
@@ -47,6 +48,7 @@ export const TAHSILAT_RESOURCES: TahsilatResource[] = [
   "template-vars",
   "companies",
   "email-settings",
+  "versions",
 ];
 
 type ColDef = { name: string; fieldType: "text" | "integer" };
@@ -182,6 +184,17 @@ const RESOURCE_META: Record<Exclude<TahsilatResource, "bins">, { name: string; s
       { name: "password", fieldType: "text" },
       { name: "ssl", fieldType: "text" },
       { name: "tls", fieldType: "text" },
+    ],
+  },
+  versions: {
+    name: "Sürümler",
+    slug: "versions",
+    columns: [
+      { name: "version", fieldType: "text" },
+      { name: "releasedAt", fieldType: "text" },
+      { name: "added", fieldType: "text" },
+      { name: "fixed", fieldType: "text" },
+      { name: "removed", fieldType: "text" },
     ],
   },
 };
