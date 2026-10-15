@@ -2,7 +2,7 @@
  * AnyPay uyumlu BIN kategorisi — yoksa oluşturur; lookup yardımcıları.
  * Sütun görünen adları: bank, bin, type, brand, kind
  */
-import { addColumn, categoryBySlug, createCategory, InputError, publicData } from "./categories.js";
+import { addColumn, categoryBySlug, createCategory, createCategoryFolder, InputError, publicData } from "./categories.js";
 import { identifier, initDatabase, pool, type CategoryRow } from "./database.js";
 
 const BIN_SLUGS = ["bins", "bin", "bin-kayitlari"] as const;
@@ -35,6 +35,25 @@ async function findBinsCategory(): Promise<CategoryRow | null> {
     "SELECT * FROM api_categories WHERE slug IN ('bins','bin','bin-kayitlari') LIMIT 1",
   );
   return rows[0] ?? null;
+}
+
+async function ensureTahsilatFolderId(): Promise<number> {
+  const [rows] = await pool.query<any[]>(
+    "SELECT id FROM api_category_folders WHERE name=? AND parent_id IS NULL LIMIT 1",
+    ["Tahsilat"],
+  );
+  if (rows[0]?.id) return Number(rows[0].id);
+  try {
+    const folder = await createCategoryFolder("Tahsilat", null);
+    return Number(folder.id);
+  } catch {
+    const [existing] = await pool.query<any[]>(
+      "SELECT id FROM api_category_folders WHERE name=? AND parent_id IS NULL LIMIT 1",
+      ["Tahsilat"],
+    );
+    if (existing[0]?.id) return Number(existing[0].id);
+    throw new InputError("Tahsilat klasörü oluşturulamadı", 500);
+  }
 }
 
 async function ensureColumns(categoryId: number) {
@@ -142,12 +161,16 @@ async function seedSamplesIfEmpty(category: CategoryRow) {
 /** Kategori + sütunlar + örnek satırlar (bir kez / idempotent) */
 export async function ensureBinsCategory(): Promise<CategoryRow> {
   await initDatabase();
+  const folderId = await ensureTahsilatFolderId();
   let category = await findBinsCategory();
   const createdNow = !category;
   if (!category) {
-    const created = await createCategory("BIN Kayıtları", "bins", null);
+    const created = await createCategory("BIN Kayıtları", "bins", folderId);
     category = await findBinsCategory();
     if (!category) throw new InputError(`BIN kategorisi oluşturulamadı (${created.slug})`, 500);
+  }
+  if (Number(category.folder_id) !== folderId) {
+    await pool.query("UPDATE api_categories SET folder_id=? WHERE id=?", [folderId, category.id]);
   }
   await ensureColumns(category.id);
   // table_name / columns güncel olsun
