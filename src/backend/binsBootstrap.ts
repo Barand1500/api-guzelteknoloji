@@ -143,6 +143,7 @@ async function seedSamplesIfEmpty(category: CategoryRow) {
 export async function ensureBinsCategory(): Promise<CategoryRow> {
   await initDatabase();
   let category = await findBinsCategory();
+  const createdNow = !category;
   if (!category) {
     const created = await createCategory("BIN Kayıtları", "bins", null);
     category = await findBinsCategory();
@@ -155,7 +156,7 @@ export async function ensureBinsCategory(): Promise<CategoryRow> {
   ]);
   category = fresh[0] || category;
   await ensureUniqueBinIndex(category);
-  await seedSamplesIfEmpty(category);
+  if (createdNow) await seedSamplesIfEmpty(category);
   return category;
 }
 
