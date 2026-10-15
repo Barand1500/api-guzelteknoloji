@@ -206,9 +206,9 @@ export default function App() {
         ) : tahsilatPage === "firmalar" ? (
           <CompaniesListPage />
         ) : tahsilatPage === "odeme-bin" ? (
-          <BinListPage />
+          <BinListPage token={token} />
         ) : tahsilatPage === "odeme-bankalar" ? (
-          <BanksListPage />
+          <BanksListPage token={token} />
         ) : tahsilatPage === "odeme-sanal-pos" ? (
           <VirtualPosListPage />
         ) : tahsilatPage === "genel-para" ? (
@@ -218,15 +218,15 @@ export default function App() {
         ) : tahsilatPage === "genel-vergi" ? (
           <TaxOfficesListPage />
         ) : tahsilatPage === "kart-tipler" ? (
-          <CardTypesListPage />
+          <CardTypesListPage token={token} />
         ) : tahsilatPage === "kart-turler" ? (
-          <CardKindsListPage />
+          <CardKindsListPage token={token} />
         ) : tahsilatPage === "kart-markalar" ? (
-          <CardBrandsListPage />
+          <CardBrandsListPage token={token} />
         ) : tahsilatPage === "cografi-iller" ? (
-          <ProvincesListPage />
+          <ProvincesListPage token={token} />
         ) : tahsilatPage === "cografi-ilceler" ? (
-          <DistrictsListPage />
+          <DistrictsListPage token={token} />
         ) : tahsilatPage === "sistem-moduller" ? (
           <ModulesListPage />
         ) : tahsilatPage === "sistem-sablon" ? (

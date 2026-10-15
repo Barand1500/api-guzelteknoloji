@@ -1,10 +1,13 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { newMetaId, type NamedMetaRow } from "./cardMetaStore";
+import type { TahsilatAdminRow, TahsilatResource } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
 type Props = {
+  token: string;
+  resource: TahsilatResource;
   eyebrow: string;
   title: string;
   subtitle: string;
@@ -15,13 +18,12 @@ type Props = {
   modalEditTitle: string;
   modalHint: string;
   fieldLabel: string;
-  load: () => NamedMetaRow[];
-  save: (rows: NamedMetaRow[]) => void;
-  idPrefix: string;
 };
 
-/** Kart tipi / tür / marka gibi tek-alanlı listeler */
+/** Kart tipi / tür / marka — MySQL */
 export default function NamedMetaListPage({
+  token,
+  resource,
   eyebrow,
   title,
   subtitle,
@@ -32,22 +34,16 @@ export default function NamedMetaListPage({
   modalEditTitle,
   modalHint,
   fieldLabel,
-  load,
-  save,
-  idPrefix,
 }: Props) {
-  const [rows, setRows] = useState<NamedMetaRow[]>(load);
+  const { rows, loading, persist } = useTahsilatDb(token, resource);
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    save(rows);
-  }, [rows, save]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -77,7 +73,7 @@ export default function NamedMetaListPage({
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     if (!q) return rows;
-    return rows.filter((r) => r.name.toLocaleLowerCase("tr-TR").includes(q));
+    return rows.filter((r) => str(r, "name").toLocaleLowerCase("tr-TR").includes(q));
   }, [rows, query]);
 
   function openCreate() {
@@ -87,9 +83,9 @@ export default function NamedMetaListPage({
     setModalOpen(true);
   }
 
-  function openEdit(row: NamedMetaRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
-    setName(row.name);
+    setName(str(row, "name"));
     setError("");
     setModalOpen(true);
   }
@@ -100,7 +96,7 @@ export default function NamedMetaListPage({
     setError("");
   }
 
-  function onSave() {
+  async function onSave() {
     const trimmed = name.trim();
     if (!trimmed) {
       setError(`${fieldLabel} gerekli.`);
@@ -109,26 +105,42 @@ export default function NamedMetaListPage({
     const dup = rows.some(
       (r) =>
         r.id !== editId &&
-        r.name.toLocaleLowerCase("tr-TR") === trimmed.toLocaleLowerCase("tr-TR"),
+        str(r, "name").toLocaleLowerCase("tr-TR") === trimmed.toLocaleLowerCase("tr-TR"),
     );
     if (dup) {
       setError("Bu ad zaten var.");
       return;
     }
-    const next: NamedMetaRow = {
-      id: editId || newMetaId(idPrefix),
-      name: trimmed,
+    const nextRow: TahsilatAdminRow = {
+      id: editId || `new-${Date.now()}`,
+      active: true,
+      data: { name: trimmed },
     };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeModal();
+    const next = editId
+      ? rows.map((r) => (r.id === editId ? nextRow : r))
+      : [nextRow, ...rows];
+    setBusy(true);
+    try {
+      await persist(next);
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await persist(rows.filter((r) => r.id !== deleteId));
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -142,13 +154,15 @@ export default function NamedMetaListPage({
           </h1>
           <p>{subtitle}</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           {addLabel}
         </button>
       </div>
 
-      <p className="bin-hint">Bu liste BIN formundaki ilgili seçime yansır.</p>
+      <p className="bin-hint">
+        Merkez DB — AnyPay anahtar açıkken <code>/v1/tahsilat/{resource}</code> ile çeker.
+      </p>
 
       <section className="bin-panel">
         <div className="bin-toolbar">
@@ -176,7 +190,7 @@ export default function NamedMetaListPage({
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td>{row.name}</td>
+                    <td>{str(row, "name")}</td>
                     <td>
                       <div className="bin-actions">
                         <button
@@ -205,7 +219,9 @@ export default function NamedMetaListPage({
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz kayıt yok"}</strong>
+              <strong>
+                {loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz kayıt yok"}
+              </strong>
               <span>{query ? "Aramayı değiştirin." : "İlk kaydı ekleyin."}</span>
             </div>
           )}
@@ -251,8 +267,8 @@ export default function NamedMetaListPage({
               ) : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={onSave}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void onSave()} disabled={busy}>
+                {busy ? "…" : editId ? "Güncelle" : "Kaydet"}
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -275,7 +291,7 @@ export default function NamedMetaListPage({
             <div className="bin-modal-head">
               <div>
                 <h2 id="meta-del-title">Kayıt silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak.</p>
+                <p>Bu kayıt veritabanından kaldırılacak.</p>
               </div>
               <button
                 type="button"
@@ -287,7 +303,12 @@ export default function NamedMetaListPage({
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void confirmDelete()}
+                disabled={busy}
+              >
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

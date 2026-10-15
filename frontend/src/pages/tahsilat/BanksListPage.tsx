@@ -1,12 +1,8 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Building2, ImagePlus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import {
-  loadBanks,
-  newBankId,
-  saveBanks,
-  type BankRow,
-} from "./banksStore";
+import type { TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
 type FormState = {
@@ -29,21 +25,20 @@ const emptyForm: FormState = {
 
 const MAX_LOGO_BYTES = 3 * 1024 * 1024;
 
-/** Bankalar — logo + ad; BIN seçimi bu listeden gelir */
-export default function BanksListPage() {
-  const [rows, setRows] = useState<BankRow[]>(loadBanks);
+type Props = { token: string };
+
+/** Bankalar — MySQL; BIN seçimi + AnyPay /v1/tahsilat/banks */
+export default function BanksListPage({ token }: Props) {
+  const { rows, loading, persist } = useTahsilatDb(token, "banks");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    saveBanks(rows);
-  }, [rows]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -74,7 +69,7 @@ export default function BanksListPage() {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     if (!q) return rows;
     return rows.filter((r) =>
-      `${r.name} ${r.shortName}`.toLocaleLowerCase("tr-TR").includes(q),
+      `${str(r, "name")} ${str(r, "shortName")}`.toLocaleLowerCase("tr-TR").includes(q),
     );
   }, [rows, query]);
 
@@ -85,15 +80,15 @@ export default function BanksListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: BankRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
     setForm({
-      name: row.name,
-      shortName: row.shortName,
-      logoDataUrl: row.logoDataUrl,
-      gateway3dsUrl: row.gateway3dsUrl,
-      apiUrl: row.apiUrl,
-      xmlUrl: row.xmlUrl,
+      name: str(row, "name"),
+      shortName: str(row, "shortName"),
+      logoDataUrl: str(row, "logo"),
+      gateway3dsUrl: str(row, "gateway3dsUrl"),
+      apiUrl: str(row, "apiUrl"),
+      xmlUrl: str(row, "xmlUrl"),
     });
     setError("");
     setModalOpen(true);
@@ -129,7 +124,7 @@ export default function BanksListPage() {
     reader.readAsDataURL(file);
   }
 
-  function save() {
+  async function save() {
     const name = form.name.trim();
     if (!name) {
       setError("Banka adı gerekli.");
@@ -138,31 +133,49 @@ export default function BanksListPage() {
     const dup = rows.some(
       (r) =>
         r.id !== editId &&
-        r.name.toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
+        str(r, "name").toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
     );
     if (dup) {
       setError("Bu banka adı zaten var.");
       return;
     }
-    const next: BankRow = {
-      id: editId || newBankId(),
-      name,
-      shortName: form.shortName.trim(),
-      logoDataUrl: form.logoDataUrl,
-      gateway3dsUrl: form.gateway3dsUrl.trim(),
-      apiUrl: form.apiUrl.trim(),
-      xmlUrl: form.xmlUrl.trim(),
+    const nextRow: TahsilatAdminRow = {
+      id: editId || `new-${Date.now()}`,
+      active: true,
+      data: {
+        name,
+        shortName: form.shortName.trim(),
+        logo: form.logoDataUrl,
+        gateway3dsUrl: form.gateway3dsUrl.trim(),
+        apiUrl: form.apiUrl.trim(),
+        xmlUrl: form.xmlUrl.trim(),
+      },
     };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeModal();
+    const next = editId
+      ? rows.map((r) => (r.id === editId ? nextRow : r))
+      : [nextRow, ...rows];
+    setBusy(true);
+    try {
+      await persist(next);
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await persist(rows.filter((r) => r.id !== deleteId));
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -178,16 +191,16 @@ export default function BanksListPage() {
             />
             Bankalar
           </h1>
-          <p>Tanımlı bankaları görüntüleyin ve yönetin</p>
+          <p>Tanımlı bankaları görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           Yeni Banka
         </button>
       </div>
 
       <p className="bin-hint">
-        Bu listedeki banka adları BIN formundaki Banka seçimine yansır.
+        MySQL — AnyPay <code>/v1/tahsilat/banks</code>; BIN formundaki Banka seçimi buradan.
       </p>
 
       <section className="bin-panel">
@@ -220,15 +233,15 @@ export default function BanksListPage() {
                   <tr key={row.id}>
                     <td>
                       <span className="bank-logo-cell">
-                        {row.logoDataUrl ? (
-                          <img src={row.logoDataUrl} alt="" />
+                        {str(row, "logo") ? (
+                          <img src={str(row, "logo")} alt="" />
                         ) : (
                           <Building2 size={18} strokeWidth={1.7} />
                         )}
                       </span>
                     </td>
-                    <td>{row.name}</td>
-                    <td>{row.shortName || "—"}</td>
+                    <td>{str(row, "name")}</td>
+                    <td>{str(row, "shortName") || "—"}</td>
                     <td>
                       <div className="bin-actions">
                         <button
@@ -378,8 +391,8 @@ export default function BanksListPage() {
               ) : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={save}>
-                Kaydet
+              <button type="button" className="primary" onClick={() => void save()} disabled={busy}>
+                {busy ? "Kaydediliyor…" : "Kaydet"}
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -414,7 +427,12 @@ export default function BanksListPage() {
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void confirmDelete()}
+                disabled={busy}
+              >
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

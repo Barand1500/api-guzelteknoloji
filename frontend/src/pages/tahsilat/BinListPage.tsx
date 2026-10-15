@@ -1,22 +1,9 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CreditCard, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import { listBankNames } from "./banksStore";
-import {
-  listCardBrandNames,
-  listCardKindNames,
-  listCardTypeNames,
-} from "./cardMetaStore";
+import { fetchTahsilatResource, field, type TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
-
-export type BinRow = {
-  id: string;
-  bin: string;
-  bank: string;
-  type: string;
-  brand: string;
-  kind: string;
-};
 
 type FormState = {
   bin: string;
@@ -26,64 +13,58 @@ type FormState = {
   kind: string;
 };
 
-const STORAGE_KEY = "gtk_tahsilat_bins_v1";
 const emptyForm: FormState = { bin: "", bank: "", type: "", brand: "", kind: "" };
 
-const SAMPLE: BinRow[] = [
-  {
-    id: "s1",
-    bin: "10067",
-    bank: "YAPI VE KREDİ BANKASI A.Ş.",
-    type: "Banka Kartı",
-    brand: "Özel Logolu",
-    kind: "Bireysel Kart",
-  },
-  {
-    id: "s2",
-    bin: "112233",
-    bank: "T. GARANTİ BANKASI A.Ş.",
-    type: "Banka Kartı",
-    brand: "Diners",
-    kind: "Bireysel Kart",
-  },
-  {
-    id: "s3",
-    bin: "113032",
-    bank: "TÜRK EKONOMİ BANKASI A.Ş.",
-    type: "Banka Kartı",
-    brand: "Amex",
-    kind: "Bireysel Kart",
-  },
-];
+type Props = { token: string };
 
-function loadRows(): BinRow[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (Array.isArray(raw) && raw.length) return raw as BinRow[];
-  } catch {
-    /* örnekle başla */
-  }
-  return SAMPLE.map((r) => ({ ...r }));
-}
-
-function uid() {
-  return `bin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/** BIN Listesi — şimdilik yerel; banka/tip/marka/tür Kart Yönetimi’ne bağlanacak */
-export default function BinListPage() {
-  const [rows, setRows] = useState<BinRow[]>(loadRows);
+/** BIN Listesi — MySQL (AnyPay /v1/tahsilat/bins) */
+export default function BinListPage({ token }: Props) {
+  const { rows, loading, saving, error: dbError, setError: setDbError, persist } = useTahsilatDb(
+    token,
+    "bins",
+  );
+  const [bankOptions, setBankOptions] = useState<string[]>([]);
+  const [typeOptions, setTypeOptions] = useState<string[]>([]);
+  const [brandOptions, setBrandOptions] = useState<string[]>([]);
+  const [kindOptions, setKindOptions] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
-  }, [rows]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const [banks, types, brands, kinds] = await Promise.all([
+          fetchTahsilatResource(token, "banks"),
+          fetchTahsilatResource(token, "card-types"),
+          fetchTahsilatResource(token, "card-brands"),
+          fetchTahsilatResource(token, "card-kinds"),
+        ]);
+        if (cancelled) return;
+        setBankOptions(
+          banks.rows
+            .filter((r) => r.active !== false)
+            .map((r) => field(r, "name"))
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b, "tr")),
+        );
+        setTypeOptions(types.rows.map((r) => field(r, "name")).filter(Boolean));
+        setBrandOptions(brands.rows.map((r) => field(r, "name")).filter(Boolean));
+        setKindOptions(kinds.rows.map((r) => field(r, "name")).filter(Boolean));
+      } catch {
+        /* dropdown boş kalabilir */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, modalOpen]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -112,16 +93,13 @@ export default function BinListPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) =>
-      `${r.bin} ${r.bank} ${r.type} ${r.brand} ${r.kind}`.toLocaleLowerCase("tr-TR").includes(q),
-    );
+    return rows.filter((r) => {
+      if (!q) return true;
+      return `${str(r, "bin")} ${str(r, "bank")} ${str(r, "type")} ${str(r, "brand")} ${str(r, "kind")}`
+        .toLocaleLowerCase("tr-TR")
+        .includes(q);
+    });
   }, [rows, query]);
-
-  const bankOptions = useMemo(() => listBankNames(), [modalOpen]);
-  const typeOptions = useMemo(() => listCardTypeNames(), [modalOpen]);
-  const brandOptions = useMemo(() => listCardBrandNames(), [modalOpen]);
-  const kindOptions = useMemo(() => listCardKindNames(), [modalOpen]);
 
   function openCreate() {
     setEditId(null);
@@ -130,14 +108,14 @@ export default function BinListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: BinRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
     setForm({
-      bin: row.bin,
-      bank: row.bank,
-      type: row.type,
-      brand: row.brand,
-      kind: row.kind,
+      bin: str(row, "bin"),
+      bank: str(row, "bank"),
+      type: str(row, "type"),
+      brand: str(row, "brand"),
+      kind: str(row, "kind"),
     });
     setError("");
     setModalOpen(true);
@@ -149,7 +127,7 @@ export default function BinListPage() {
     setError("");
   }
 
-  function save() {
+  async function save() {
     const bin = form.bin.replace(/\D/g, "").slice(0, 8);
     if (bin.length < 4) {
       setError("BIN numarası en az 4 hane olmalı.");
@@ -159,29 +137,48 @@ export default function BinListPage() {
       setError("Tüm alanları doldurun.");
       return;
     }
-    const dup = rows.some((r) => r.bin === bin && r.id !== editId);
+    const dup = rows.some((r) => str(r, "bin") === bin && r.id !== editId);
     if (dup) {
       setError("Bu BIN zaten kayıtlı.");
       return;
     }
-    const next: BinRow = {
-      id: editId || uid(),
-      bin,
-      bank: form.bank,
-      type: form.type,
-      brand: form.brand,
-      kind: form.kind,
+    const nextRow: TahsilatAdminRow = {
+      id: editId || `new-${Date.now()}`,
+      active: true,
+      data: {
+        bin,
+        bank: form.bank,
+        type: form.type,
+        brand: form.brand,
+        kind: form.kind,
+      },
     };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeModal();
+    const next = editId
+      ? rows.map((r) => (r.id === editId ? nextRow : r))
+      : [nextRow, ...rows];
+    setBusy(true);
+    try {
+      await persist(next);
+      closeModal();
+      setDbError("");
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await persist(rows.filter((r) => r.id !== deleteId));
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -190,20 +187,31 @@ export default function BinListPage() {
         <div className="bin-page-head-copy">
           <span className="bin-page-eyebrow">ÖDEME ALTYAPISI</span>
           <h1>
-            <CreditCard size={26} strokeWidth={2} style={{ display: "inline", marginRight: 10, verticalAlign: -4 }} />
+            <CreditCard
+              size={26}
+              strokeWidth={2}
+              style={{ display: "inline", marginRight: 10, verticalAlign: -4 }}
+            />
             BIN Listesi
           </h1>
-          <p>Kart BIN numaralarını görüntüleyin ve yönetin</p>
+          <p>Kart BIN numaralarını görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading || saving}>
           <Plus size={18} />
           Yeni BIN
         </button>
       </div>
 
       <p className="bin-hint">
-        Banka, kart tipi, marka ve tür seçimleri Bankalar + Kart Yönetimi listelerinden gelir.
+        Veriler MySQL’de tutulur. AnyPay anahtarı açıkken{" "}
+        <code>/v1/tahsilat/bins</code> üzerinden çeker.
       </p>
+      {loading ? <p className="bin-hint">Yükleniyor…</p> : null}
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
       <section className="bin-panel">
         <div className="bin-toolbar">
@@ -235,11 +243,11 @@ export default function BinListPage() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td className="bin-mono">{row.bin}</td>
-                    <td>{row.bank}</td>
-                    <td>{row.type}</td>
-                    <td>{row.brand}</td>
-                    <td>{row.kind}</td>
+                    <td className="bin-mono">{str(row, "bin")}</td>
+                    <td>{str(row, "bank")}</td>
+                    <td>{str(row, "type")}</td>
+                    <td>{str(row, "brand")}</td>
+                    <td>{str(row, "kind")}</td>
                     <td>
                       <div className="bin-actions">
                         <button
@@ -268,8 +276,16 @@ export default function BinListPage() {
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz BIN yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk BIN kaydını ekleyin."}</span>
+              <strong>
+                {loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz BIN yok"}
+              </strong>
+              <span>
+                {loading
+                  ? "Veritabanından okunuyor."
+                  : query
+                    ? "Aramayı değiştirin."
+                    : "İlk BIN kaydını ekleyin."}
+              </span>
             </div>
           )}
         </div>
@@ -386,8 +402,8 @@ export default function BinListPage() {
               ) : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={save}>
-                Kaydet
+              <button type="button" className="primary" onClick={() => void save()} disabled={busy}>
+                {busy ? "Kaydediliyor…" : "Kaydet"}
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -410,7 +426,7 @@ export default function BinListPage() {
             <div className="bin-modal-head">
               <div>
                 <h2 id="bin-del-title">BIN silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak.</p>
+                <p>Bu kayıt veritabanından kaldırılacak.</p>
               </div>
               <button
                 type="button"
@@ -422,7 +438,12 @@ export default function BinListPage() {
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void confirmDelete()}
+                disabled={busy}
+              >
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

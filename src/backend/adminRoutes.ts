@@ -5,6 +5,8 @@ import { addColumn, apiKeyForCategory, categories, categoryById, categoryFolders
 import { initDatabase, pool, withTransaction } from "./database.js";
 import { databaseSchema, databaseTableRows } from "./schemaExplorer.js";
 import { folderBundle, recordFolderUsage } from "./folderBundles.js";
+import { adminListTahsilat, adminReplaceTahsilat } from "./tahsilatAdminService.js";
+import { ensureAllTahsilatCatalog, TAHSILAT_RESOURCES } from "./tahsilatCatalog.js";
 import { saveImage } from "./uploads.js";
 import { quotaLimit, recordKeyUsage } from "./keyQuota.js";
 
@@ -111,6 +113,19 @@ adminRoutes.put("/admin/categories/:id/schema", async (request, response) => res
 adminRoutes.post("/admin/categories/:id/import", async (request, response) => response.status(201).json({ success: true, data: { rows: await importRows(Number(request.params.id), request.body?.rows) } }));
 adminRoutes.post("/admin/categories/:id/columns", async (request, response) => response.status(201).json({ success: true, data: await addColumn(Number(request.params.id), request.body || {}) }));
 adminRoutes.delete("/admin/categories/:categoryId/columns/:columnId", async (request, response) => { await deleteColumn(Number(request.params.categoryId), Number(request.params.columnId)); response.json({ success: true }); });
+
+/** Tahsilat menü → MySQL (AnyPay /v1/tahsilat ile aynı tablolar) */
+adminRoutes.get("/admin/tahsilat", async (_request, response) => {
+  await ensureAllTahsilatCatalog();
+  response.json({ success: true, data: { resources: TAHSILAT_RESOURCES } });
+});
+adminRoutes.get("/admin/tahsilat/:resource", async (request, response) => {
+  response.json({ success: true, data: await adminListTahsilat(String(request.params.resource)) });
+});
+adminRoutes.put("/admin/tahsilat/:resource", async (request, response) => {
+  const rows = Array.isArray(request.body?.rows) ? request.body.rows : request.body;
+  response.json({ success: true, data: await adminReplaceTahsilat(String(request.params.resource), rows) });
+});
 
 adminRoutes.get("/admin/api-keys", async (_request, response) => {
   await initDatabase();

@@ -31,8 +31,14 @@ Panelde: API Anahtarları → ilgili kategorilere veya **Tahsilat** klasörüne 
 
 - Kaynak: **uzak**
 - Base URL: `https://api.guzelteknoloji.com/v1/tahsilat`
-- API Key: merkezden alınan anahtar
+- API Key: merkezden alınan anahtar (Tahsilat klasörü / ilgili kategoriler yetkili)
 
 Kapalıysa yerel DB kullanılır (bozulmaz).
 
 Eski yol `.../v1/bins` hâlâ çalışır.
+
+## Panel → DB
+
+Tahsilat menüsünden girilen BIN / banka / il / ilçe / kart meta verileri
+`PUT /admin/tahsilat/:resource` ile MySQL’e yazılır. AnyPay aynı tabloları
+public uçlardan okur.

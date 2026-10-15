@@ -43,6 +43,9 @@ const RESOURCE_META: Record<
       { name: "name", fieldType: "text" },
       { name: "shortName", fieldType: "text" },
       { name: "logo", fieldType: "text" },
+      { name: "gateway3dsUrl", fieldType: "text" },
+      { name: "apiUrl", fieldType: "text" },
+      { name: "xmlUrl", fieldType: "text" },
     ],
   },
   provinces: {

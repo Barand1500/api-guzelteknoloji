@@ -1,12 +1,8 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Award, ImagePlus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import {
-  loadCardBrands,
-  newMetaId,
-  saveCardBrands,
-  type BrandMetaRow,
-} from "./cardMetaStore";
+import type { TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
 type FormState = { name: string; logoDataUrl: string };
@@ -14,21 +10,20 @@ type FormState = { name: string; logoDataUrl: string };
 const emptyForm: FormState = { name: "", logoDataUrl: "" };
 const MAX_LOGO_BYTES = 3 * 1024 * 1024;
 
-/** Kart Markaları — ad + logo; BIN marka seçimi buradan */
-export default function CardBrandsListPage() {
-  const [rows, setRows] = useState<BrandMetaRow[]>(loadCardBrands);
+type Props = { token: string };
+
+/** Kart Markaları — MySQL; BIN marka seçimi */
+export default function CardBrandsListPage({ token }: Props) {
+  const { rows, loading, persist } = useTahsilatDb(token, "card-brands");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    saveCardBrands(rows);
-  }, [rows]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -58,7 +53,7 @@ export default function CardBrandsListPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     if (!q) return rows;
-    return rows.filter((r) => r.name.toLocaleLowerCase("tr-TR").includes(q));
+    return rows.filter((r) => str(r, "name").toLocaleLowerCase("tr-TR").includes(q));
   }, [rows, query]);
 
   function openCreate() {
@@ -68,9 +63,9 @@ export default function CardBrandsListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: BrandMetaRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
-    setForm({ name: row.name, logoDataUrl: row.logoDataUrl });
+    setForm({ name: str(row, "name"), logoDataUrl: str(row, "logo") });
     setError("");
     setModalOpen(true);
   }
@@ -105,7 +100,7 @@ export default function CardBrandsListPage() {
     reader.readAsDataURL(file);
   }
 
-  function save() {
+  async function save() {
     const name = form.name.trim();
     if (!name) {
       setError("Marka adı gerekli.");
@@ -114,27 +109,42 @@ export default function CardBrandsListPage() {
     const dup = rows.some(
       (r) =>
         r.id !== editId &&
-        r.name.toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
+        str(r, "name").toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
     );
     if (dup) {
       setError("Bu marka zaten var.");
       return;
     }
-    const next: BrandMetaRow = {
-      id: editId || newMetaId("cbrand"),
-      name,
-      logoDataUrl: form.logoDataUrl,
+    const nextRow: TahsilatAdminRow = {
+      id: editId || `new-${Date.now()}`,
+      active: true,
+      data: { name, logo: form.logoDataUrl },
     };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeModal();
+    const next = editId
+      ? rows.map((r) => (r.id === editId ? nextRow : r))
+      : [nextRow, ...rows];
+    setBusy(true);
+    try {
+      await persist(next);
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await persist(rows.filter((r) => r.id !== deleteId));
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -189,14 +199,14 @@ export default function CardBrandsListPage() {
                   <tr key={row.id}>
                     <td>
                       <span className="bank-logo-cell">
-                        {row.logoDataUrl ? (
-                          <img src={row.logoDataUrl} alt="" />
+                        {str(row, "logo") ? (
+                          <img src={str(row, "logo")} alt="" />
                         ) : (
                           <Award size={18} strokeWidth={1.7} />
                         )}
                       </span>
                     </td>
-                    <td>{row.name}</td>
+                    <td>{str(row, "name")}</td>
                     <td>
                       <div className="bin-actions">
                         <button

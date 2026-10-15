@@ -1,22 +1,14 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ListPlus, MapPinned, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import {
-  loadDistricts,
-  loadProvinces,
-  newGeoId,
-  provinceNameById,
-  saveDistricts,
-  type DistrictRow,
-  type ProvinceRow,
-} from "./geoStore";
+import { fetchTahsilatResource, type TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
-type FormState = { provinceId: string; name: string; active: boolean };
-type BulkForm = { provinceId: string; namesText: string; active: boolean };
-
-const emptyForm: FormState = { provinceId: "", name: "", active: true };
-const emptyBulk: BulkForm = { provinceId: "", namesText: "", active: true };
+type FormState = { province: string; name: string; active: boolean };
+type BulkForm = { province: string; namesText: string; active: boolean };
+const emptyForm: FormState = { province: "", name: "", active: true };
+const emptyBulk: BulkForm = { province: "", namesText: "", active: true };
 
 function parseBulkNames(text: string): string[] {
   const seen = new Set<string>();
@@ -32,12 +24,14 @@ function parseBulkNames(text: string): string[] {
   return out;
 }
 
-/** İlçeler — il filtresi + tekil / toplu ekleme */
-export default function DistrictsListPage() {
-  const [provinces] = useState<ProvinceRow[]>(() => loadProvinces().filter((p) => p.active));
-  const [rows, setRows] = useState<DistrictRow[]>(loadDistricts);
+type Props = { token: string };
+
+/** İlçeler — MySQL /v1/tahsilat/districts */
+export default function DistrictsListPage({ token }: Props) {
+  const { rows, loading, persist } = useTahsilatDb(token, "districts");
+  const [provinces, setProvinces] = useState<TahsilatAdminRow[]>([]);
   const [query, setQuery] = useState("");
-  const [filterProvinceId, setFilterProvinceId] = useState("");
+  const [filterProvince, setFilterProvince] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -45,11 +39,14 @@ export default function DistrictsListPage() {
   const [bulk, setBulk] = useState<BulkForm>(emptyBulk);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    saveDistricts(rows);
-  }, [rows]);
+    void fetchTahsilatResource(token, "provinces")
+      .then((data) => setProvinces(data.rows.filter((r) => r.active !== false)))
+      .catch(() => setProvinces([]));
+  }, [token]);
 
   const anyModal = modalOpen || bulkOpen || Boolean(deleteId);
 
@@ -79,62 +76,64 @@ export default function DistrictsListPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [anyModal]);
 
+  const provinceNames = useMemo(
+    () =>
+      provinces
+        .map((p) => str(p, "name"))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, "tr")),
+    [provinces],
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     return rows
-      .filter((r) => !filterProvinceId || r.provinceId === filterProvinceId)
+      .filter((r) => !filterProvince || str(r, "province") === filterProvince)
       .filter((r) => {
         if (!q) return true;
-        const province = provinceNameById(r.provinceId);
-        return `${r.name} ${province}`.toLocaleLowerCase("tr-TR").includes(q);
+        return `${str(r, "name")} ${str(r, "province")}`.toLocaleLowerCase("tr-TR").includes(q);
       })
       .sort((a, b) => {
-        const pa = provinceNameById(a.provinceId).localeCompare(provinceNameById(b.provinceId), "tr");
+        const pa = str(a, "province").localeCompare(str(b, "province"), "tr");
         if (pa !== 0) return pa;
-        return a.name.localeCompare(b.name, "tr");
+        return str(a, "name").localeCompare(str(b, "name"), "tr");
       });
-  }, [rows, query, filterProvinceId]);
+  }, [rows, query, filterProvince]);
+
+  function provinceIdByName(name: string) {
+    const hit = provinces.find(
+      (p) => str(p, "name").toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
+    );
+    return hit?.id || "";
+  }
 
   function openCreate() {
     setEditId(null);
-    setForm({
-      ...emptyForm,
-      provinceId: filterProvinceId || provinces[0]?.id || "",
-    });
+    setForm({ ...emptyForm, province: filterProvince || provinceNames[0] || "" });
     setError("");
     setModalOpen(true);
   }
 
   function openBulk() {
-    setBulk({
-      ...emptyBulk,
-      provinceId: filterProvinceId || provinces[0]?.id || "",
-    });
+    setBulk({ ...emptyBulk, province: filterProvince || provinceNames[0] || "" });
     setError("");
     setBulkOpen(true);
   }
 
-  function openEdit(row: DistrictRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
-    setForm({ provinceId: row.provinceId, name: row.name, active: row.active });
+    setForm({
+      province: str(row, "province"),
+      name: str(row, "name"),
+      active: row.active !== false,
+    });
     setError("");
     setModalOpen(true);
   }
 
-  function closeSingle() {
-    setModalOpen(false);
-    setEditId(null);
-    setError("");
-  }
-
-  function closeBulk() {
-    setBulkOpen(false);
-    setError("");
-  }
-
-  function saveSingle() {
+  async function saveSingle() {
     const name = form.name.trim();
-    if (!form.provinceId) {
+    if (!form.province) {
       setError("İl seçin.");
       return;
     }
@@ -142,74 +141,81 @@ export default function DistrictsListPage() {
       setError("İlçe adı gerekli.");
       return;
     }
-    const dup = rows.some(
-      (r) =>
-        r.id !== editId &&
-        r.provinceId === form.provinceId &&
-        r.name.toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
-    );
-    if (dup) {
-      setError("Bu ilçede aynı ad zaten var.");
-      return;
-    }
-    const next: DistrictRow = {
-      id: editId || newGeoId("dist"),
-      name,
-      provinceId: form.provinceId,
+    const nextRow: TahsilatAdminRow = {
+      id: editId || `new-${Date.now()}`,
       active: form.active,
+      data: {
+        name,
+        province: form.province,
+        provinceId: Number(provinceIdByName(form.province)) || 0,
+      },
     };
-    setRows((prev) =>
-      editId ? prev.map((r) => (r.id === editId ? next : r)) : [next, ...prev],
-    );
-    closeSingle();
+    const next = editId ? rows.map((r) => (r.id === editId ? nextRow : r)) : [nextRow, ...rows];
+    setBusy(true);
+    try {
+      await persist(next);
+      setModalOpen(false);
+      setEditId(null);
+    } catch {
+      setError("Kayıt yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function saveBulk() {
-    if (!bulk.provinceId) {
+  async function saveBulk() {
+    if (!bulk.province) {
       setError("İl seçin.");
       return;
     }
     const names = parseBulkNames(bulk.namesText);
     if (!names.length) {
-      setError("En az bir ilçe adı girin (satır satır veya virgülle).");
+      setError("En az bir ilçe adı girin.");
       return;
     }
     const existing = new Set(
       rows
-        .filter((r) => r.provinceId === bulk.provinceId)
-        .map((r) => r.name.toLocaleLowerCase("tr-TR")),
+        .filter((r) => str(r, "province") === bulk.province)
+        .map((r) => str(r, "name").toLocaleLowerCase("tr-TR")),
     );
-    const added: DistrictRow[] = [];
-    let skipped = 0;
+    const pid = Number(provinceIdByName(bulk.province)) || 0;
+    const added: TahsilatAdminRow[] = [];
     for (const name of names) {
       const key = name.toLocaleLowerCase("tr-TR");
-      if (existing.has(key)) {
-        skipped += 1;
-        continue;
-      }
+      if (existing.has(key)) continue;
       existing.add(key);
       added.push({
-        id: newGeoId("dist"),
-        name,
-        provinceId: bulk.provinceId,
+        id: `new-${Date.now()}-${added.length}`,
         active: bulk.active,
+        data: { name, province: bulk.province, provinceId: pid },
       });
     }
     if (!added.length) {
-      setError("Eklenecek yeni ilçe yok (hepsi zaten kayıtlı).");
+      setError("Eklenecek yeni ilçe yok.");
       return;
     }
-    setRows((prev) => [...added, ...prev]);
-    closeBulk();
-    if (skipped > 0) {
-      /* sessizce atlandı; istenirse toast eklenebilir */
+    setBusy(true);
+    try {
+      await persist([...added, ...rows]);
+      setBulkOpen(false);
+    } catch {
+      setError("Toplu kayıt yazılamadı.");
+    } finally {
+      setBusy(false);
     }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await persist(rows.filter((r) => r.id !== deleteId));
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -225,19 +231,23 @@ export default function DistrictsListPage() {
             />
             İlçeler
           </h1>
-          <p>Tanımlı ilçeleri görüntüleyin ve yönetin</p>
+          <p>Tanımlı ilçeleri görüntüleyin ve yönetin (merkez DB)</p>
         </div>
         <div className="bin-head-actions">
-          <button type="button" className="bin-add secondary" onClick={openBulk}>
+          <button type="button" className="bin-add secondary" onClick={openBulk} disabled={loading}>
             <ListPlus size={18} />
             Toplu Ekle
           </button>
-          <button type="button" className="bin-add" onClick={openCreate}>
+          <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
             <Plus size={18} />
             Yeni İlçe
           </button>
         </div>
       </div>
+
+      <p className="bin-hint">
+        MySQL — AnyPay <code>/v1/tahsilat/districts</code>
+      </p>
 
       <section className="bin-panel">
         <div className="bin-toolbar">
@@ -248,26 +258,23 @@ export default function DistrictsListPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="İlçe veya il ara…"
-                aria-label="İlçe ara"
               />
             </label>
             <select
               className="bin-filter-select"
-              value={filterProvinceId}
-              onChange={(e) => setFilterProvinceId(e.target.value)}
-              aria-label="İle göre filtrele"
+              value={filterProvince}
+              onChange={(e) => setFilterProvince(e.target.value)}
             >
               <option value="">İle Göre Filtrele</option>
-              {provinces.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
+              {provinceNames.map((p) => (
+                <option key={p} value={p}>
+                  {p}
                 </option>
               ))}
             </select>
           </div>
           <span className="bin-count">{filtered.length} kayıt</span>
         </div>
-
         <div className="bin-table-wrap">
           {filtered.length ? (
             <table className="bin-table">
@@ -282,30 +289,22 @@ export default function DistrictsListPage() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td>{provinceNameById(row.provinceId)}</td>
-                    <td>{row.name}</td>
+                    <td>{str(row, "province")}</td>
+                    <td>{str(row, "name")}</td>
                     <td>
-                      <span className={`vpos-status ${row.active ? "on" : "off"}`}>
-                        {row.active ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active ? "Aktif" : "Pasif"}
+                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+                        {row.active !== false ? "Aktif" : "Pasif"}
                       </span>
                     </td>
                     <td>
                       <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
+                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
                           <Pencil size={16} />
                         </button>
                         <button
                           type="button"
                           className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
                           onClick={() => setDeleteId(row.id)}
                         >
                           <Trash2 size={16} />
@@ -318,12 +317,7 @@ export default function DistrictsListPage() {
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query || filterProvinceId ? "Eşleşen kayıt yok" : "Henüz ilçe yok"}</strong>
-              <span>
-                {query || filterProvinceId
-                  ? "Filtreyi veya aramayı değiştirin."
-                  : "Tekil veya toplu ekleme ile başlayın."}
-              </span>
+              <strong>{loading ? "Yükleniyor…" : "Kayıt yok"}</strong>
             </div>
           )}
         </div>
@@ -331,50 +325,40 @@ export default function DistrictsListPage() {
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="dist-modal-title"
-            style={{ width: "min(460px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true">
             <div className="bin-modal-head">
               <div>
-                <h2 id="dist-modal-title">{editId ? "İlçe Düzenle" : "Yeni İlçe"}</h2>
+                <h2>{editId ? "İlçe Düzenle" : "Yeni İlçe"}</h2>
                 <p>İlçe bilgilerini girin.</p>
               </div>
-              <button type="button" className="bin-modal-close" onClick={closeSingle} aria-label="Kapat">
+              <button type="button" className="bin-modal-close" onClick={() => setModalOpen(false)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-body">
               <div className="bin-field">
-                <label htmlFor="dist-il">
+                <label>
                   İl <em>*</em>
                 </label>
                 <select
-                  id="dist-il"
-                  value={form.provinceId}
-                  onChange={(e) => setForm((f) => ({ ...f, provinceId: e.target.value }))}
+                  value={form.province}
+                  onChange={(e) => setForm((f) => ({ ...f, province: e.target.value }))}
                 >
                   <option value="">Seçiniz</option>
-                  {provinces.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
+                  {provinceNames.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="bin-field">
-                <label htmlFor="dist-name">
+                <label>
                   İlçe Adı <em>*</em>
                 </label>
                 <input
-                  id="dist-name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="İlçe Adı"
                   autoFocus
                 />
               </div>
@@ -388,23 +372,18 @@ export default function DistrictsListPage() {
                   className={`vpos-switch ${form.active ? "on" : ""}`}
                   role="switch"
                   aria-checked={form.active}
-                  aria-label="Aktif"
                   onClick={() => setForm((f) => ({ ...f, active: !f.active }))}
                 >
                   <span />
                 </button>
               </div>
-              {error ? (
-                <span className="bin-modal-error" role="alert">
-                  {error}
-                </span>
-              ) : null}
+              {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={saveSingle}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void saveSingle()} disabled={busy}>
+                Kaydet
               </button>
-              <button type="button" className="ghost" onClick={closeSingle}>
+              <button type="button" className="ghost" onClick={() => setModalOpen(false)}>
                 Vazgeç
               </button>
             </div>
@@ -414,85 +393,52 @@ export default function DistrictsListPage() {
 
       {bulkOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="dist-bulk-title"
-            style={{ width: "min(520px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true">
             <div className="bin-modal-head">
               <div>
-                <h2 id="dist-bulk-title">Toplu İlçe Ekle</h2>
+                <h2>Toplu İlçe Ekle</h2>
                 <p>Bir ile birden fazla ilçe ekleyin.</p>
               </div>
-              <button type="button" className="bin-modal-close" onClick={closeBulk} aria-label="Kapat">
+              <button type="button" className="bin-modal-close" onClick={() => setBulkOpen(false)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-body">
               <div className="bin-field">
-                <label htmlFor="bulk-il">
+                <label>
                   İl <em>*</em>
                 </label>
                 <select
-                  id="bulk-il"
-                  value={bulk.provinceId}
-                  onChange={(e) => setBulk((f) => ({ ...f, provinceId: e.target.value }))}
+                  value={bulk.province}
+                  onChange={(e) => setBulk((f) => ({ ...f, province: e.target.value }))}
                 >
                   <option value="">Seçiniz</option>
-                  {provinces.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
+                  {provinceNames.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="bin-field">
-                <label htmlFor="bulk-names">
+                <label>
                   İlçe adları <em>*</em>
                 </label>
                 <textarea
-                  id="bulk-names"
                   className="vpos-textarea"
                   rows={8}
                   value={bulk.namesText}
                   onChange={(e) => setBulk((f) => ({ ...f, namesText: e.target.value }))}
-                  placeholder={"Her satıra bir ilçe\nveya virgülle ayırın\n\nÖrn:\nAladağ\nCeyhan\nÇukurova"}
-                  autoFocus
+                  placeholder={"Aladağ\nCeyhan\nÇukurova"}
                 />
-                <small className="bank-logo-hint">
-                  Satır satır veya virgül / noktalı virgül ile ayırın. Aynı ildeki tekrarlar atlanır.
-                </small>
               </div>
-              <div className="vpos-active-row">
-                <div>
-                  <strong>Aktif</strong>
-                  <p>Eklenen tüm ilçeler aktif olsun.</p>
-                </div>
-                <button
-                  type="button"
-                  className={`vpos-switch ${bulk.active ? "on" : ""}`}
-                  role="switch"
-                  aria-checked={bulk.active}
-                  aria-label="Aktif"
-                  onClick={() => setBulk((f) => ({ ...f, active: !f.active }))}
-                >
-                  <span />
-                </button>
-              </div>
-              {error ? (
-                <span className="bin-modal-error" role="alert">
-                  {error}
-                </span>
-              ) : null}
+              {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={saveBulk}>
+              <button type="button" className="primary" onClick={() => void saveBulk()} disabled={busy}>
                 Toplu Kaydet
               </button>
-              <button type="button" className="ghost" onClick={closeBulk}>
+              <button type="button" className="ghost" onClick={() => setBulkOpen(false)}>
                 Vazgeç
               </button>
             </div>
@@ -502,30 +448,17 @@ export default function DistrictsListPage() {
 
       {deleteId ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="dist-del-title"
-            style={{ width: "min(400px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true">
             <div className="bin-modal-head">
               <div>
-                <h2 id="dist-del-title">İlçe silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak.</p>
+                <h2>İlçe silinsin mi?</h2>
               </div>
-              <button
-                type="button"
-                className="bin-modal-close"
-                onClick={() => setDeleteId(null)}
-                aria-label="Kapat"
-              >
+              <button type="button" className="bin-modal-close" onClick={() => setDeleteId(null)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button type="button" className="primary" onClick={() => void confirmDelete()} disabled={busy}>
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

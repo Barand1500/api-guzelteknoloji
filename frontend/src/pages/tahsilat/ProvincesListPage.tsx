@@ -1,31 +1,26 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, MapPin, Pencil, Plus, Search, Trash2, X } from "lucide-react";
-import {
-  loadProvinces,
-  newGeoId,
-  saveProvinces,
-  type ProvinceRow,
-} from "./geoStore";
+import type { TahsilatAdminRow } from "./tahsilatApi";
+import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
 type FormState = { name: string; plateCode: string; active: boolean };
 const emptyForm: FormState = { name: "", plateCode: "", active: true };
 
-/** İller — Coğrafi Veriler */
-export default function ProvincesListPage() {
-  const [rows, setRows] = useState<ProvinceRow[]>(loadProvinces);
+type Props = { token: string };
+
+/** İller — MySQL /v1/tahsilat/provinces */
+export default function ProvincesListPage({ token }: Props) {
+  const { rows, loading, persist } = useTahsilatDb(token, "provinces");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    saveProvinces(rows);
-  }, [rows]);
 
   useEffect(() => {
     if (!modalOpen && !deleteId) return;
@@ -54,10 +49,12 @@ export default function ProvincesListPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) =>
-      `${r.name} ${r.plateCode}`.toLocaleLowerCase("tr-TR").includes(q),
-    );
+    return rows
+      .filter((r) => {
+        if (!q) return true;
+        return `${str(r, "name")} ${str(r, "plateCode")}`.toLocaleLowerCase("tr-TR").includes(q);
+      })
+      .sort((a, b) => str(a, "name").localeCompare(str(b, "name"), "tr"));
   }, [rows, query]);
 
   function openCreate() {
@@ -67,9 +64,9 @@ export default function ProvincesListPage() {
     setModalOpen(true);
   }
 
-  function openEdit(row: ProvinceRow) {
+  function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
-    setForm({ name: row.name, plateCode: row.plateCode, active: row.active });
+    setForm({ name: str(row, "name"), plateCode: str(row, "plateCode"), active: row.active !== false });
     setError("");
     setModalOpen(true);
   }
@@ -80,41 +77,40 @@ export default function ProvincesListPage() {
     setError("");
   }
 
-  function save() {
+  async function onSave() {
     const name = form.name.trim();
-    const plateCode = form.plateCode.replace(/\D/g, "").slice(0, 2);
     if (!name) {
       setError("İl adı gerekli.");
       return;
     }
-    const dup = rows.some(
-      (r) =>
-        r.id !== editId &&
-        r.name.toLocaleLowerCase("tr-TR") === name.toLocaleLowerCase("tr-TR"),
-    );
-    if (dup) {
-      setError("Bu il zaten var.");
-      return;
-    }
-    const next: ProvinceRow = {
-      id: editId || newGeoId("prov"),
-      name,
-      plateCode,
+    const nextRow: TahsilatAdminRow = {
+      id: editId || `new-${Date.now()}`,
       active: form.active,
+      data: { name, plateCode: form.plateCode.trim() },
     };
-    setRows((prev) => {
-      const list = editId
-        ? prev.map((r) => (r.id === editId ? next : r))
-        : [next, ...prev];
-      return list.sort((a, b) => a.name.localeCompare(b.name, "tr"));
-    });
-    closeModal();
+    const next = editId ? rows.map((r) => (r.id === editId ? nextRow : r)) : [nextRow, ...rows];
+    setBusy(true);
+    try {
+      await persist(next);
+      closeModal();
+    } catch {
+      setError("Kayıt veritabanına yazılamadı.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteId) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteId));
-    setDeleteId(null);
+    setBusy(true);
+    try {
+      await persist(rows.filter((r) => r.id !== deleteId));
+      setDeleteId(null);
+    } catch {
+      setError("Silme başarısız.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -130,13 +126,17 @@ export default function ProvincesListPage() {
             />
             İller
           </h1>
-          <p>Tanımlı illeri görüntüleyin ve yönetin</p>
+          <p>Tanımlı illeri görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           Yeni İl
         </button>
       </div>
+
+      <p className="bin-hint">
+        MySQL — AnyPay <code>/v1/tahsilat/provinces</code>
+      </p>
 
       <section className="bin-panel">
         <div className="bin-toolbar">
@@ -145,20 +145,19 @@ export default function ProvincesListPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="İl adı veya plaka ara…"
+              placeholder="İl veya plaka ara…"
               aria-label="İl ara"
             />
           </label>
           <span className="bin-count">{filtered.length} kayıt</span>
         </div>
-
         <div className="bin-table-wrap">
           {filtered.length ? (
             <table className="bin-table">
               <thead>
                 <tr>
-                  <th>Plaka</th>
                   <th>İl Adı</th>
+                  <th>Plaka</th>
                   <th>Durum</th>
                   <th style={{ textAlign: "right" }}>İşlemler</th>
                 </tr>
@@ -166,30 +165,22 @@ export default function ProvincesListPage() {
               <tbody>
                 {filtered.map((row) => (
                   <tr key={row.id}>
-                    <td className="bin-mono">{row.plateCode || "—"}</td>
-                    <td>{row.name}</td>
+                    <td>{str(row, "name")}</td>
+                    <td>{str(row, "plateCode") || "—"}</td>
                     <td>
-                      <span className={`vpos-status ${row.active ? "on" : "off"}`}>
-                        {row.active ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active ? "Aktif" : "Pasif"}
+                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+                        {row.active !== false ? "Aktif" : "Pasif"}
                       </span>
                     </td>
                     <td>
                       <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
+                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
                           <Pencil size={16} />
                         </button>
                         <button
                           type="button"
                           className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
                           onClick={() => setDeleteId(row.id)}
                         >
                           <Trash2 size={16} />
@@ -202,8 +193,7 @@ export default function ProvincesListPage() {
             </table>
           ) : (
             <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz il yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk ili ekleyin."}</span>
+              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen yok" : "Henüz il yok"}</strong>
             </div>
           )}
         </div>
@@ -211,76 +201,54 @@ export default function ProvincesListPage() {
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="prov-modal-title"
-            style={{ width: "min(440px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true">
             <div className="bin-modal-head">
               <div>
-                <h2 id="prov-modal-title">{editId ? "İl Düzenle" : "Yeni İl"}</h2>
+                <h2>{editId ? "İl Düzenle" : "Yeni İl"}</h2>
                 <p>İl bilgilerini girin.</p>
               </div>
-              <button type="button" className="bin-modal-close" onClick={closeModal} aria-label="Kapat">
+              <button type="button" className="bin-modal-close" onClick={closeModal}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-body">
               <div className="bin-field">
-                <label htmlFor="prov-name">
+                <label>
                   İl Adı <em>*</em>
                 </label>
                 <input
-                  id="prov-name"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="İl Adı"
                   autoFocus
                 />
               </div>
               <div className="bin-field">
-                <label htmlFor="prov-plate">Plaka Kodu</label>
+                <label>Plaka</label>
                 <input
-                  id="prov-plate"
-                  inputMode="numeric"
                   value={form.plateCode}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      plateCode: e.target.value.replace(/\D/g, "").slice(0, 2),
-                    }))
-                  }
-                  placeholder="Plaka Kodu"
+                  onChange={(e) => setForm((f) => ({ ...f, plateCode: e.target.value }))}
                 />
               </div>
               <div className="vpos-active-row">
                 <div>
                   <strong>Aktif</strong>
-                  <p>Bu il aktif olarak listelensin.</p>
+                  <p>Bu il listelensin.</p>
                 </div>
                 <button
                   type="button"
                   className={`vpos-switch ${form.active ? "on" : ""}`}
                   role="switch"
                   aria-checked={form.active}
-                  aria-label="Aktif"
                   onClick={() => setForm((f) => ({ ...f, active: !f.active }))}
                 >
                   <span />
                 </button>
               </div>
-              {error ? (
-                <span className="bin-modal-error" role="alert">
-                  {error}
-                </span>
-              ) : null}
+              {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={save}>
-                {editId ? "Güncelle" : "Kaydet"}
+              <button type="button" className="primary" onClick={() => void onSave()} disabled={busy}>
+                Kaydet
               </button>
               <button type="button" className="ghost" onClick={closeModal}>
                 Vazgeç
@@ -292,30 +260,18 @@ export default function ProvincesListPage() {
 
       {deleteId ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div
-            ref={modalRef}
-            className="bin-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="prov-del-title"
-            style={{ width: "min(400px, 100%)" }}
-          >
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true">
             <div className="bin-modal-head">
               <div>
-                <h2 id="prov-del-title">İl silinsin mi?</h2>
-                <p>Bu kayıt listeden kaldırılacak. Bağlı ilçeler etkilenmez (şimdilik).</p>
+                <h2>İl silinsin mi?</h2>
+                <p>Veritabanından kaldırılacak.</p>
               </div>
-              <button
-                type="button"
-                className="bin-modal-close"
-                onClick={() => setDeleteId(null)}
-                aria-label="Kapat"
-              >
+              <button type="button" className="bin-modal-close" onClick={() => setDeleteId(null)}>
                 <X size={18} />
               </button>
             </div>
             <div className="bin-modal-foot">
-              <button type="button" className="primary" onClick={confirmDelete}>
+              <button type="button" className="primary" onClick={() => void confirmDelete()} disabled={busy}>
                 Sil
               </button>
               <button type="button" className="ghost" onClick={() => setDeleteId(null)}>

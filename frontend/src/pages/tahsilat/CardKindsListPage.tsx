@@ -1,10 +1,13 @@
 import { Tag } from "lucide-react";
-import { loadCardKinds, saveCardKinds } from "./cardMetaStore";
 import NamedMetaListPage from "./NamedMetaListPage";
 
-export default function CardKindsListPage() {
+type Props = { token: string };
+
+export default function CardKindsListPage({ token }: Props) {
   return (
     <NamedMetaListPage
+      token={token}
+      resource="card-kinds"
       eyebrow="KART YÖNETİMİ"
       title="Kart Türleri"
       subtitle="Kart türlerini görüntüleyin ve yönetin"
@@ -15,9 +18,6 @@ export default function CardKindsListPage() {
       modalEditTitle="Kart Türü Düzenle"
       modalHint="Kart türü adını girin."
       fieldLabel="Ad"
-      load={loadCardKinds}
-      save={saveCardKinds}
-      idPrefix="ckind"
     />
   );
 }
