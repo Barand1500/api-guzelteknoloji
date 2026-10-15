@@ -75,6 +75,15 @@ export async function bulkUpsertTahsilat(
   });
 }
 
+/** Firma için gtk_ anahtarı üret / yenile — AnyPay X-API-Key */
+export async function issueCompanyApiKey(token: string, companyId: string, rotate = true) {
+  return request<{ apiKey: string; apiKeyId: string; rows: TahsilatAdminRow[] }>(
+    `/admin/tahsilat/companies/${companyId}/api-key`,
+    token,
+    { method: "POST", body: JSON.stringify({ rotate }) },
+  );
+}
+
 export function field(row: TahsilatAdminRow, key: string): string {
   const v = row.data[key];
   return v == null ? "" : String(v);

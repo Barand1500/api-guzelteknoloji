@@ -2,9 +2,11 @@
  * Tahsilat panel → MySQL.
  * Satır ekle / güncelle / sil — tam liste replace riskli olduğu için tekil CRUD.
  */
+import { randomUUID } from "crypto";
 import { getSchema, InputError } from "./categories.js";
 import { identifier, pool } from "./database.js";
 import {
+  ensureTahsilatFolderId,
   ensureTahsilatResource,
   isTahsilatResource,
   type TahsilatResource,
@@ -123,13 +125,118 @@ export async function adminUpsertTahsilatRow(
   } else {
     const names = ["active", ...fields.map((f) => f.sqlName)];
     const values = [active, ...fields.map((f) => toSqlValue(f.value, f.fieldType))];
-    await pool.query(
+    const [inserted] = await pool.query<any>(
       `INSERT INTO ${identifier(tableName)} (${names.map(identifier).join(",")}) VALUES (${names.map(() => "?").join(",")})`,
       values,
     );
+    if (resource === "companies" && inserted?.insertId) {
+      await issueCompanyApiKey(String(inserted.insertId), { forceNew: true });
+    }
+  }
+
+  if (resource === "companies" && existingId) {
+    await ensureCompanyApiKey(String(existingId));
   }
 
   return adminListTahsilat(resource);
+}
+
+async function companyTableMeta() {
+  const category = await ensureTahsilatResource("companies");
+  const schema = await getSchema(category.id);
+  const tableName =
+    (schema.category as { tableName?: string }).tableName || category.table_name;
+  if (!tableName) throw new InputError("Firma tablosu bulunamadı", 500);
+  const colByName = new Map(schema.columns.map((c) => [columnKey(c.name), c]));
+  const apiKeyCol = colByName.get(columnKey("apiKey"));
+  const apiKeyIdCol = colByName.get(columnKey("apiKeyId"));
+  if (!apiKeyCol || !apiKeyIdCol) {
+    throw new InputError("Firma API Key sütunları eksik — kataloğu yenileyin", 500);
+  }
+  return {
+    tableName,
+    apiKeySql: apiKeyCol.sqlName || apiKeyCol.name,
+    apiKeyIdSql: apiKeyIdCol.sqlName || apiKeyIdCol.name,
+    nameCol: colByName.get(columnKey("name")),
+    domainCol: colByName.get(columnKey("domain")),
+  };
+}
+
+/** Firma için Tahsilat klasörüne yetkili gtk_ anahtarı üret / yenile */
+export async function issueCompanyApiKey(
+  companyId: string,
+  options: { forceNew?: boolean } = {},
+) {
+  if (!/^[1-9]\d*$/.test(companyId)) throw new InputError("Geçersiz firma id");
+  const meta = await companyTableMeta();
+  const [rows] = await pool.query<any[]>(
+    `SELECT id, ${identifier(meta.apiKeySql)} AS apiKey, ${identifier(meta.apiKeyIdSql)} AS apiKeyId
+     ${meta.nameCol ? `, ${identifier(meta.nameCol.sqlName || meta.nameCol.name)} AS companyName` : ""}
+     ${meta.domainCol ? `, ${identifier(meta.domainCol.sqlName || meta.domainCol.name)} AS domain` : ""}
+     FROM ${identifier(meta.tableName)} WHERE id=? LIMIT 1`,
+    [Number(companyId)],
+  );
+  const row = rows[0];
+  if (!row) throw new InputError("Firma bulunamadı", 404);
+
+  const folderId = await ensureTahsilatFolderId();
+  if (!folderId) throw new InputError("Tahsilat klasörü oluşturulamadı", 500);
+
+  const projectName = String(row.companyName || row.domain || `Firma #${companyId}`).slice(0, 120);
+  const existingKeyId = String(row.apiKeyId || "").trim();
+  let keyId = existingKeyId;
+  let apiKey = `gtk_${randomUUID().replace(/-/g, "")}`;
+
+  if (existingKeyId && !options.forceNew) {
+    const [keys] = await pool.query<any[]>(
+      "SELECT id, api_key FROM api_keys WHERE id=? LIMIT 1",
+      [existingKeyId],
+    );
+    if (keys[0]) {
+      await pool.query(
+        `UPDATE ${identifier(meta.tableName)} SET ${identifier(meta.apiKeySql)}=?, ${identifier(meta.apiKeyIdSql)}=? WHERE id=?`,
+        [keys[0].api_key, keys[0].id, Number(companyId)],
+      );
+      return { apiKey: String(keys[0].api_key), apiKeyId: String(keys[0].id) };
+    }
+  }
+
+  if (existingKeyId && options.forceNew) {
+    await pool.query("UPDATE api_keys SET api_key=? WHERE id=?", [apiKey, existingKeyId]);
+    keyId = existingKeyId;
+  } else {
+    keyId = randomUUID();
+    await pool.query(
+      "INSERT INTO api_keys(id,project_name,api_key,active,minute_limit,month_limit) VALUES(?,?,?,1,NULL,NULL)",
+      [keyId, `Tahsilat · ${projectName}`, apiKey],
+    );
+  }
+
+  await pool.query("DELETE FROM api_key_folders WHERE api_key_id=?", [keyId]);
+  await pool.query("INSERT INTO api_key_folders(api_key_id,folder_id) VALUES(?,?)", [keyId, folderId]);
+
+  await pool.query(
+    `UPDATE ${identifier(meta.tableName)} SET ${identifier(meta.apiKeySql)}=?, ${identifier(meta.apiKeyIdSql)}=? WHERE id=?`,
+    [apiKey, keyId, Number(companyId)],
+  );
+
+  return { apiKey, apiKeyId: keyId };
+}
+
+/** Anahtar yoksa üret; varsa olduğu gibi bırak */
+export async function ensureCompanyApiKey(companyId: string) {
+  if (!/^[1-9]\d*$/.test(companyId)) throw new InputError("Geçersiz firma id");
+  const meta = await companyTableMeta();
+  const [rows] = await pool.query<any[]>(
+    `SELECT ${identifier(meta.apiKeySql)} AS apiKey, ${identifier(meta.apiKeyIdSql)} AS apiKeyId
+     FROM ${identifier(meta.tableName)} WHERE id=? LIMIT 1`,
+    [Number(companyId)],
+  );
+  if (!rows[0]) throw new InputError("Firma bulunamadı", 404);
+  if (String(rows[0].apiKey || "").trim() && String(rows[0].apiKeyId || "").trim()) {
+    return { apiKey: String(rows[0].apiKey), apiKeyId: String(rows[0].apiKeyId) };
+  }
+  return issueCompanyApiKey(companyId, { forceNew: true });
 }
 
 /** Tek satır sil (diğer satırlara dokunmaz). */

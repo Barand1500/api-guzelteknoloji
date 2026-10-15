@@ -167,6 +167,9 @@ const RESOURCE_META: Record<Exclude<TahsilatResource, "bins">, { name: string; s
       { name: "dbActive", fieldType: "text" },
       { name: "frontendPath", fieldType: "text" },
       { name: "licenseEndsAt", fieldType: "text" },
+      /** AnyPay X-API-Key — Firmalar ekranından kopyalanır */
+      { name: "apiKey", fieldType: "text" },
+      { name: "apiKeyId", fieldType: "text" },
     ],
   },
   "email-settings": {
@@ -183,7 +186,7 @@ const RESOURCE_META: Record<Exclude<TahsilatResource, "bins">, { name: string; s
   },
 };
 
-async function ensureTahsilatFolderId(): Promise<number | null> {
+export async function ensureTahsilatFolderId(): Promise<number | null> {
   try {
     const [rows] = await pool.query<any[]>(
       "SELECT id FROM api_category_folders WHERE name=? AND parent_id IS NULL LIMIT 1",

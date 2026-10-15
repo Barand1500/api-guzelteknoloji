@@ -10,6 +10,7 @@ import {
   adminDeleteTahsilatRow,
   adminListTahsilat,
   adminUpsertTahsilatRow,
+  issueCompanyApiKey,
 } from "./tahsilatAdminService.js";
 import { ensureAllTahsilatCatalog, TAHSILAT_RESOURCES } from "./tahsilatCatalog.js";
 import { saveImage } from "./uploads.js";
@@ -123,6 +124,13 @@ adminRoutes.delete("/admin/categories/:categoryId/columns/:columnId", async (req
 adminRoutes.get("/admin/tahsilat", async (_request, response) => {
   await ensureAllTahsilatCatalog();
   response.json({ success: true, data: { resources: TAHSILAT_RESOURCES } });
+});
+/** Firma API Key — generic :resource rotalarından önce */
+adminRoutes.post("/admin/tahsilat/companies/:id/api-key", async (request, response) => {
+  const forceNew = request.body?.rotate !== false;
+  const issued = await issueCompanyApiKey(String(request.params.id), { forceNew });
+  const list = await adminListTahsilat("companies");
+  response.json({ success: true, data: { ...issued, rows: list.rows } });
 });
 adminRoutes.get("/admin/tahsilat/:resource", async (request, response) => {
   response.json({ success: true, data: await adminListTahsilat(String(request.params.resource)) });

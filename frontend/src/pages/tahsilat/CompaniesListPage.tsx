@@ -3,17 +3,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2,
   Check,
+  Copy,
   Database,
   FolderOpen,
   Globe2,
+  KeyRound,
   List,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   X,
 } from "lucide-react";
-import type { TahsilatAdminRow } from "./tahsilatApi";
+import { issueCompanyApiKey, type TahsilatAdminRow } from "./tahsilatApi";
 import { licenseBadge } from "./companiesStore";
 import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
@@ -72,9 +75,9 @@ function rowToForm(row: TahsilatAdminRow): FormState {
 
 type Props = { token: string };
 
-/** Firmalar — MySQL */
+/** Firmalar — MySQL (+ firma API Key → AnyPay) */
 export default function CompaniesListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "companies");
+  const { rows, loading, saveRow, removeRow, setRows, reload } = useTahsilatDb(token, "companies");
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -82,7 +85,37 @@ export default function CompaniesListPage({ token }: Props) {
   const [error, setError] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [keyBusyId, setKeyBusyId] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+
+  const editingRow = editId ? rows.find((r) => r.id === editId) : null;
+  const editingApiKey = editingRow ? str(editingRow, "apiKey") : "";
+
+  async function copyKey(key: string, id: string) {
+    if (!key) return;
+    try {
+      await navigator.clipboard.writeText(key);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      setError("Kopyalama başarısız.");
+    }
+  }
+
+  async function onIssueKey(companyId: string, rotate: boolean) {
+    setKeyBusyId(companyId);
+    setError("");
+    try {
+      const data = await issueCompanyApiKey(token, companyId, rotate);
+      if (data.rows) setRows(data.rows);
+      else await reload();
+    } catch {
+      setError(rotate ? "Anahtar yenilenemedi." : "Anahtar oluşturulamadı.");
+    } finally {
+      setKeyBusyId(null);
+    }
+  }
 
   const anyModal = modalOpen || Boolean(deleteId);
 
@@ -232,13 +265,18 @@ export default function CompaniesListPage({ token }: Props) {
             />
             Firmalar
           </h1>
-          <p>Kayıtlı firmaları, domain ve veritabanı bilgilerini yönetin (merkez DB)</p>
+          <p>Firma kaydı oluşunca API Key üretilir — AnyPay’e bu anahtarı yapıştırın</p>
         </div>
         <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
           <Plus size={18} />
           Yeni Firma
         </button>
       </div>
+
+      <p className="bin-hint">
+        AnyPay → API Ayarları → «Güzel Teknoloji merkezi API» alanına aşağıdaki <strong>API Key</strong>’i
+        kopyalayın. Yol: <code>https://api.guzelteknoloji.com/v1/tahsilat</code>
+      </p>
 
       <section className="bin-panel">
         <div className="bin-toolbar">
@@ -263,6 +301,7 @@ export default function CompaniesListPage({ token }: Props) {
                 <tr>
                   <th>Firma Adı</th>
                   <th>Domain</th>
+                  <th>API Key</th>
                   <th>Lisans</th>
                   <th>Durum</th>
                   <th style={{ textAlign: "right" }}>İşlemler</th>
@@ -271,10 +310,39 @@ export default function CompaniesListPage({ token }: Props) {
               <tbody>
                 {filtered.map((row) => {
                   const lic = licenseBadge(str(row, "licenseEndsAt"));
+                  const apiKey = str(row, "apiKey");
                   return (
                     <tr key={row.id}>
                       <td>{str(row, "name")}</td>
                       <td>{str(row, "domain")}</td>
+                      <td>
+                        {apiKey ? (
+                          <div className="firm-key-cell">
+                            <code className="firm-key-code" title={apiKey}>
+                              {apiKey.slice(0, 12)}…
+                            </code>
+                            <button
+                              type="button"
+                              className="bin-icon-btn"
+                              title="Kopyala"
+                              aria-label="API Key kopyala"
+                              onClick={() => void copyKey(apiKey, row.id)}
+                            >
+                              {copiedId === row.id ? <Check size={15} /> : <Copy size={15} />}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="firm-key-create"
+                            disabled={keyBusyId === row.id}
+                            onClick={() => void onIssueKey(row.id, true)}
+                          >
+                            <KeyRound size={14} />
+                            Anahtar oluştur
+                          </button>
+                        )}
+                      </td>
                       <td>
                         <span className={`firm-lic tone-${lic.tone}`}>{lic.label}</span>
                       </td>
@@ -497,6 +565,58 @@ export default function CompaniesListPage({ token }: Props) {
                   />
                 </div>
               </section>
+
+              {editId ? (
+                <section className="firm-section">
+                  <header>
+                    <span className="firm-section-icon">
+                      <KeyRound size={18} />
+                    </span>
+                    <h3>Merkezi API Key</h3>
+                  </header>
+                  <p className="bank-logo-hint" style={{ marginBottom: 10 }}>
+                    Bu anahtarı AnyPay → API Ayarları → Güzel Teknoloji merkezi API alanına yapıştırın.
+                  </p>
+                  {editingApiKey ? (
+                    <div className="firm-key-box">
+                      <code>{editingApiKey}</code>
+                      <div className="firm-key-actions">
+                        <button
+                          type="button"
+                          className="bin-icon-btn"
+                          title="Kopyala"
+                          onClick={() => void copyKey(editingApiKey, editId)}
+                        >
+                          {copiedId === editId ? <Check size={16} /> : <Copy size={16} />}
+                        </button>
+                        <button
+                          type="button"
+                          className="bin-icon-btn"
+                          title="Yenile"
+                          disabled={keyBusyId === editId}
+                          onClick={() => void onIssueKey(editId, true)}
+                        >
+                          <RefreshCw size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="firm-key-create"
+                      disabled={keyBusyId === editId}
+                      onClick={() => void onIssueKey(editId, true)}
+                    >
+                      <KeyRound size={14} />
+                      API Key oluştur
+                    </button>
+                  )}
+                </section>
+              ) : (
+                <p className="bank-logo-hint">
+                  Kaydettikten sonra bu firma için otomatik API Key üretilir.
+                </p>
+              )}
 
               {error ? <span className="bin-modal-error">{error}</span> : null}
             </div>

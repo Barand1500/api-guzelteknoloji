@@ -603,6 +603,69 @@
   color: #1f6fd8;
 }
 
+.firm-key-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+}
+
+.firm-key-code {
+  font-size: 12px;
+  font-weight: 650;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.firm-key-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px dashed #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.firm-key-create:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.firm-key-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.firm-key-box code {
+  flex: 1;
+  font-size: 12px;
+  word-break: break-all;
+  color: #f8fafc;
+}
+
+.firm-key-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.firm-key-actions .bin-icon-btn {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
 .overview-head {
   margin-bottom: 8px;
 }
