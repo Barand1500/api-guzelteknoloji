@@ -187,6 +187,16 @@ async function createMetadata() {
   await addMetadataColumn("api_category_columns", "sql_name", "VARCHAR(64) NULL");
   await addMetadataColumn("api_category_columns", "reference_category_id", "INT NULL");
   await pool.query("UPDATE api_category_columns SET field_type='text' WHERE field_type NOT IN ('text','number','integer','float','boolean','boolean_text','date','relation','image','image_upload','image_base64')");
+  await pool.query(`CREATE TABLE IF NOT EXISTS api_tahsilat_change_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    resource VARCHAR(64) NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    row_id VARCHAR(64) NOT NULL,
+    summary VARCHAR(512) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_tahsilat_change_log_time (created_at),
+    INDEX idx_tahsilat_change_log_resource (resource)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
 }
 
 // First bring installations that still store rows as JSON to the previous physical format.

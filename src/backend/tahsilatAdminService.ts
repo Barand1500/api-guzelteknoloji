@@ -18,6 +18,68 @@ export type TahsilatAdminRow = {
   data: Record<string, string | number | boolean | null>;
 };
 
+async function recordTahsilatChange(
+  resource: string,
+  action: "create" | "update" | "delete",
+  rowId: string,
+  summary: string,
+) {
+  try {
+    await pool.query(
+      `INSERT INTO api_tahsilat_change_log (resource, action, row_id, summary) VALUES (?,?,?,?)`,
+      [resource, action, String(rowId || ""), String(summary || "").slice(0, 512)],
+    );
+  } catch (err) {
+    console.warn("[tahsilat] change log yazılamadı:", err);
+  }
+}
+
+function summarizeRow(
+  resource: string,
+  action: string,
+  rowId: string,
+  data?: Record<string, unknown> | null,
+) {
+  const pick = (...keys: string[]) => {
+    if (!data) return "";
+    for (const key of keys) {
+      const hit = Object.entries(data).find(
+        ([name]) => columnKey(name) === columnKey(key),
+      );
+      if (hit?.[1] != null && String(hit[1]).trim()) return String(hit[1]).trim();
+    }
+    return "";
+  };
+  const label =
+    pick("name", "adi", "bin", "code", "shortName") ||
+    (rowId ? `#${rowId}` : "");
+  const verb =
+    action === "create" ? "eklendi" : action === "delete" ? "silindi" : "güncellendi";
+  return `${resource}: ${label} ${verb}`.slice(0, 512);
+}
+
+export async function listTahsilatChangeLog(limit = 100) {
+  const safe = Math.min(500, Math.max(1, Number(limit) || 100));
+  const [rows] = await pool.query<any[]>(
+    `SELECT id, resource, action, row_id AS rowId, summary, created_at AS createdAt
+     FROM api_tahsilat_change_log
+     ORDER BY id DESC
+     LIMIT ?`,
+    [safe],
+  );
+  return (rows || []).map((r) => ({
+    id: String(r.id),
+    resource: String(r.resource || ""),
+    action: String(r.action || ""),
+    rowId: String(r.rowId || ""),
+    summary: String(r.summary || ""),
+    createdAt:
+      r.createdAt instanceof Date
+        ? r.createdAt.toISOString()
+        : String(r.createdAt || ""),
+  }));
+}
+
 function columnKey(name: string) {
   return name
     .toLocaleLowerCase("tr-TR")
@@ -101,10 +163,13 @@ export async function adminUpsertTahsilatRow(
     (schema.category as { tableName?: string }).tableName || category.table_name;
   if (!tableName) throw new InputError("Tablo adı bulunamadı", 500);
 
-  const fields = mapIncomingData(schema, input.data && typeof input.data === "object" ? input.data : {});
+  const incomingData = input.data && typeof input.data === "object" ? input.data : {};
+  const fields = mapIncomingData(schema, incomingData);
   const active = input.active === false ? 0 : 1;
   const idRaw = input.id == null ? "" : String(input.id);
   const existingId = /^[1-9]\d*$/.test(idRaw) ? Number(idRaw) : null;
+  let action: "create" | "update" = existingId ? "update" : "create";
+  let rowId = existingId ? String(existingId) : "";
 
   if (existingId) {
     const [found] = await pool.query<any[]>(
@@ -129,6 +194,8 @@ export async function adminUpsertTahsilatRow(
       `INSERT INTO ${identifier(tableName)} (${names.map(identifier).join(",")}) VALUES (${names.map(() => "?").join(",")})`,
       values,
     );
+    rowId = inserted?.insertId ? String(inserted.insertId) : "";
+    action = "create";
     if (resource === "companies" && inserted?.insertId) {
       await issueCompanyApiKey(String(inserted.insertId), { forceNew: true });
     }
@@ -137,6 +204,13 @@ export async function adminUpsertTahsilatRow(
   if (resource === "companies" && existingId) {
     await ensureCompanyApiKey(String(existingId));
   }
+
+  await recordTahsilatChange(
+    resource,
+    action,
+    rowId,
+    summarizeRow(resource, action, rowId, incomingData as Record<string, unknown>),
+  );
 
   return adminListTahsilat(resource);
 }
@@ -257,6 +331,12 @@ export async function adminDeleteTahsilatRow(resource: string, id: string) {
     [Number(id)],
   );
   if (!result?.affectedRows) throw new InputError("Kayıt bulunamadı veya silinemedi", 404);
+  await recordTahsilatChange(
+    resource,
+    "delete",
+    String(id),
+    summarizeRow(resource, "delete", String(id), null),
+  );
   return adminListTahsilat(resource);
 }
 

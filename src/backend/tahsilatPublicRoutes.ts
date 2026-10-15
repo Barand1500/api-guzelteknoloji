@@ -8,6 +8,7 @@ import { lookupBinByDigits } from "./binsBootstrap.js";
 import { apiKeyForCategory, InputError } from "./categories.js";
 import { initDatabase, pool } from "./database.js";
 import { recordKeyUsage } from "./keyQuota.js";
+import { listTahsilatChangeLog } from "./tahsilatAdminService.js";
 import {
   ensureAllTahsilatCatalog,
   ensureTahsilatResource,
@@ -83,6 +84,19 @@ tahsilatPublicRoutes.get(
       category: { id: category.id, name: category.name, slug: category.slug },
       data: hit,
     });
+  },
+);
+
+/** Merkezi Tahsilat değişiklik günlüğü — :resource'tan önce */
+tahsilatPublicRoutes.get(
+  "/v1/tahsilat/changelog",
+  serviceEnabled,
+  async (request, response) => {
+    const { category, keyId } = await authorizeResource(request, "banks");
+    const limit = Number(request.query.limit || 100);
+    const data = await listTahsilatChangeLog(limit);
+    await track(request, keyId, category.id);
+    response.json({ success: true, resource: "changelog", data });
   },
 );
 
