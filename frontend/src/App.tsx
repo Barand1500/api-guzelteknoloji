@@ -17,11 +17,13 @@ import BinListPage from "./pages/tahsilat/BinListPage";
 import CardBrandsListPage from "./pages/tahsilat/CardBrandsListPage";
 import CardKindsListPage from "./pages/tahsilat/CardKindsListPage";
 import CardTypesListPage from "./pages/tahsilat/CardTypesListPage";
+import CompaniesListPage from "./pages/tahsilat/CompaniesListPage";
 import ContractsListPage from "./pages/tahsilat/ContractsListPage";
 import CurrenciesListPage from "./pages/tahsilat/CurrenciesListPage";
 import DistrictsListPage from "./pages/tahsilat/DistrictsListPage";
 import EmailSettingsPage from "./pages/tahsilat/EmailSettingsPage";
 import ModulesListPage from "./pages/tahsilat/ModulesListPage";
+import OverviewPage from "./pages/tahsilat/OverviewPage";
 import ProvincesListPage from "./pages/tahsilat/ProvincesListPage";
 import TahsilatPlaceholder from "./pages/tahsilat/TahsilatPlaceholder";
 import TaxOfficesListPage from "./pages/tahsilat/TaxOfficesListPage";
@@ -199,7 +201,11 @@ export default function App() {
       ) : view === "guide" ? (
         <Guide onStart={() => void startTour()} onOpen={openGuideChapter} hasCategory={Boolean(guideCategory)} />
       ) : view === "tahsilat" ? (
-        tahsilatPage === "odeme-bin" ? (
+        tahsilatPage === "ozet" ? (
+          <OverviewPage />
+        ) : tahsilatPage === "firmalar" ? (
+          <CompaniesListPage />
+        ) : tahsilatPage === "odeme-bin" ? (
           <BinListPage />
         ) : tahsilatPage === "odeme-bankalar" ? (
           <BanksListPage />

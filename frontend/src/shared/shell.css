@@ -293,6 +293,10 @@
   font-weight: 600 !important;
   color: #586b80 !important;
 }
+.workspace-nav-sub-text {
+  gap: 0 !important;
+  padding-left: 44px !important;
+}
 .workspace-nav-sub.is-nav-active { color: #fff !important; }
 .workspace-compact .workspace-nav-group-toggle,
 .workspace-compact .workspace-nav-sub {
@@ -304,6 +308,17 @@
 }
 .workspace-compact .workspace-nav-group-toggle svg:last-child { display: none; }
 .workspace-compact .workspace-nav-sub { height: 34px !important; }
+.workspace-compact .workspace-nav-sub-text span {
+  display: none;
+}
+.workspace-compact .workspace-nav-sub-text::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
 
 .tahsilat-placeholder {
   display: grid;

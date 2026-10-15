@@ -55,19 +55,29 @@ const titles: Record<View, string> = {
 };
 
 const WORLD_KEY = "gtk_sidebar_world";
-const EXPAND_KEY = "gtk_tahsilat_expanded";
+const EXPAND_KEY = "gtk_tahsilat_expanded_one";
+const EXPAND_KEY_LEGACY = "gtk_tahsilat_expanded";
 
 function readWorld(): "api" | "tahsilat" {
   return localStorage.getItem(WORLD_KEY) === "tahsilat" ? "tahsilat" : "api";
 }
 
-function readExpanded(): string[] {
+/** Accordion: aynı anda tek grup */
+function readExpandedGroup(): string | null {
   try {
-    const raw = JSON.parse(localStorage.getItem(EXPAND_KEY) || "[]");
-    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
+    const one = localStorage.getItem(EXPAND_KEY);
+    if (one) return one;
+    const raw = JSON.parse(localStorage.getItem(EXPAND_KEY_LEGACY) || "null");
+    if (Array.isArray(raw) && typeof raw[0] === "string") return raw[0];
   } catch {
-    return [];
+    /* yok */
   }
+  return null;
+}
+
+function persistExpandedGroup(groupId: string | null) {
+  if (groupId) localStorage.setItem(EXPAND_KEY, groupId);
+  else localStorage.removeItem(EXPAND_KEY);
 }
 
 export default function Layout({
@@ -95,7 +105,7 @@ export default function Layout({
   const [profileOpen, setProfileOpen] = useState(false);
   const [folderMode, setFolderMode] = useState(false);
   const [sidebarWorld, setSidebarWorld] = useState<"api" | "tahsilat">(readWorld);
-  const [tahsilatExpanded, setTahsilatExpanded] = useState<string[]>(readExpanded);
+  const [tahsilatOpenGroup, setTahsilatOpenGroup] = useState<string | null>(readExpandedGroup);
   const [profileMenuPosition, setProfileMenuPosition] = useState({ top: 0, left: 0 });
   const navRef = useRef<HTMLElement>(null);
   const pillRef = useRef<HTMLDivElement>(null);
@@ -153,7 +163,7 @@ export default function Layout({
     const timer = window.setTimeout(place, resizing ? 340 : 0);
     window.addEventListener("resize", place);
     return () => { window.clearTimeout(timer); window.removeEventListener("resize", place); gsap.killTweensOf(pill); };
-  }, [activeView, sidebarCollapsed, preferences.sidebarOrder, folderMode, tahsilatMode, tahsilatPage, tahsilatExpanded]);
+  }, [activeView, sidebarCollapsed, preferences.sidebarOrder, folderMode, tahsilatMode, tahsilatPage, tahsilatOpenGroup]);
 
   useEffect(() => {
     const panel = document.querySelector<HTMLElement>(folderMode ? ".folder-tree" : ".workspace-nav");
@@ -164,13 +174,10 @@ export default function Layout({
   useEffect(() => {
     if (!tahsilatMode) return;
     const group = groupIdForPage(tahsilatPage);
-    if (!group || tahsilatExpanded.includes(group)) return;
-    setTahsilatExpanded((prev) => {
-      const next = [...prev, group];
-      localStorage.setItem(EXPAND_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, [tahsilatMode, tahsilatPage, tahsilatExpanded]);
+    if (!group || tahsilatOpenGroup === group) return;
+    setTahsilatOpenGroup(group);
+    persistExpandedGroup(group);
+  }, [tahsilatMode, tahsilatPage, tahsilatOpenGroup]);
 
   // Yenilemede Tahsilat dünyası açıksa içerik de o moda gelsin
   useEffect(() => {
@@ -194,9 +201,9 @@ export default function Layout({
     setProfileOpen(false);
   }
   function toggleTahsilatGroup(groupId: string) {
-    setTahsilatExpanded((prev) => {
-      const next = prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId];
-      localStorage.setItem(EXPAND_KEY, JSON.stringify(next));
+    setTahsilatOpenGroup((prev) => {
+      const next = prev === groupId ? null : groupId;
+      persistExpandedGroup(next);
       return next;
     });
   }
@@ -255,7 +262,7 @@ export default function Layout({
                 </button>
               );
             }
-            const open = tahsilatExpanded.includes(item.id);
+            const open = tahsilatOpenGroup === item.id;
             const childActive = view === "tahsilat" && item.children.some((c) => c.id === tahsilatPage);
             return (
               <div key={item.id} className="workspace-nav-group">
@@ -277,12 +284,11 @@ export default function Layout({
                         <button
                           key={child.id}
                           type="button"
-                          className={`workspace-nav-sub ${active ? "is-nav-active" : ""}`}
+                          className={`workspace-nav-sub workspace-nav-sub-text ${active ? "is-nav-active" : ""}`}
                           onClick={() => openTahsilatPage(child.id)}
                           title={child.label}
                           aria-current={active ? "page" : undefined}
                         >
-                          <NavIcon name={child.icon} size={16} />
                           <span>{child.label}</span>
                         </button>
                       );
