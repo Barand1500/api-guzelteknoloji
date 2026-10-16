@@ -9,7 +9,11 @@ import { apiKeyForCategory, InputError } from "./categories.js";
 import { initDatabase, pool } from "./database.js";
 import { recordKeyUsage } from "./keyQuota.js";
 import { listTahsilatChangeLog } from "./tahsilatAdminService.js";
-import { completeTenantPayment, startTenantPayment } from "./payments/service.js";
+import {
+  completeTenantPayment,
+  reverseTenantPayment,
+  startTenantPayment,
+} from "./payments/service.js";
 import {
   ensureAllTahsilatCatalog,
   ensureTahsilatResource,
@@ -101,7 +105,11 @@ tahsilatPublicRoutes.get(
   },
 );
 
-/** Merkezi 3D başlatma: API anahtarı ilgili firmayı belirler. */
+  /**
+   * Merkezi 3D başlatma (A motoru).
+   * AnyPay yalnızca Api Ayarları açıkken buraya POST eder.
+   * Kapalı AnyPay panelleri bu ucu kullanmaz — kendi /api/payments/3d yolları kalır.
+   */
 tahsilatPublicRoutes.post(
   "/v1/tahsilat/payments/start",
   serviceEnabled,
@@ -117,7 +125,22 @@ tahsilatPublicRoutes.post(
   },
 );
 
-/** Banka callback'i açık uçtur; tek kullanımlık oturum UUID'siyle doğrulanır. */
+/** Merkezi iptal/iade (void/refund) — AnyPay reversePayment source=central */
+tahsilatPublicRoutes.post(
+  "/v1/tahsilat/payments/reverse",
+  serviceEnabled,
+  async (request, response) => {
+    const { category, keyId } = await authorizeResource(request, "virtual-pos");
+    await track(request, keyId, category.id);
+    const result = await reverseTenantPayment(keyId, request.body || {});
+    response.json({ success: true, data: result });
+  },
+);
+
+/**
+ * Banka → merkez callback (Api AÇIK).
+ * Yerel /api/payments/3d/* değil; session UUID + firma domain ile AnyPay'e 303.
+ */
 tahsilatPublicRoutes.all(
   "/v1/tahsilat/payments/callback/:sessionId",
   async (request, response) => {
@@ -127,6 +150,7 @@ tahsilatPublicRoutes.all(
       ...(request.body && typeof request.body === "object" ? request.body : {}),
     };
     const result = await completeTenantPayment(String(request.params.sessionId), outcome, body);
+    // target yalnızca resolveReturnTarget çıktısı (https origin + sabit path)
     response.redirect(303, result.target);
   },
 );

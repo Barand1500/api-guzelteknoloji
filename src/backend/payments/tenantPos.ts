@@ -2,7 +2,13 @@ import mysql, { type Connection } from "mysql2/promise";
 import type { PosCredentials } from "./types.js";
 import { looksLikeAkbankV2 } from "./adapters/akbankV2.js";
 import { looksLikeGaranti } from "./adapters/garanti.js";
+import { looksLikeHalkode } from "./adapters/halkode.js";
+import { looksLikeIyzico } from "./adapters/iyzico.js";
+import { looksLikePaytr } from "./adapters/paytr.js";
+import { looksLikeQnb } from "./adapters/qnb.js";
+import { looksLikeTosla } from "./adapters/tosla.js";
 import { looksLikeVakifBank } from "./adapters/vakifbank.js";
+import { looksLikeYapiKredi } from "./adapters/yapikredi.js";
 
 export type TenantDatabaseConfig = {
   companyId: string;
@@ -114,14 +120,34 @@ export async function resolveTenantPos(connection: Connection, requestedBankName
     apiUrl: String(bank.sanal_pos_api_url || "").trim(),
     xmlUrl: String(bank.sanal_pos_xml_url || "").trim(),
   };
-  if (!credentials.merchantId || !credentials.securityKey || !credentials.gateway3dUrl) {
+  if (!credentials.merchantId || !credentials.securityKey) {
     throw new Error("pos-credentials-incomplete");
+  }
+  const urlOptional =
+    looksLikeTosla(credentials) ||
+    looksLikeHalkode(credentials) ||
+    looksLikeIyzico(credentials) ||
+    looksLikePaytr(credentials);
+  if (!credentials.gateway3dUrl && !urlOptional) {
+    throw new Error("pos-credentials-incomplete");
+  }
+  if (looksLikePaytr(credentials) && !credentials.terminalPassword) {
+    throw new Error("pos-paytr-salt-missing");
   }
   if ((looksLikeAkbankV2(credentials) || looksLikeVakifBank(credentials)) && !credentials.terminalSafeId) {
     throw new Error("pos-terminal-missing");
   }
   if (looksLikeGaranti(credentials) && (!credentials.terminalSafeId || !credentials.terminalPassword)) {
     throw new Error("pos-garanti-credentials-incomplete");
+  }
+  if (looksLikeQnb(credentials) && (!credentials.terminalSafeId || !credentials.terminalPassword)) {
+    throw new Error("pos-qnb-credentials-incomplete");
+  }
+  if (looksLikeYapiKredi(credentials) && (!credentials.terminalSafeId || !credentials.terminalPassword)) {
+    throw new Error("pos-yapikredi-credentials-incomplete");
+  }
+  if (looksLikeTosla(credentials) && !credentials.terminalSafeId) {
+    throw new Error("pos-tosla-credentials-incomplete");
   }
   return credentials;
 }

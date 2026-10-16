@@ -4,6 +4,8 @@ import type {
   Initiate3dInput,
   Initiate3dResult,
   PaymentGateway,
+  ReversePaymentInput,
+  ReversePaymentResult,
 } from '../types.js';
 
 /** Akbank V2 SecurePay — referans akbank.adapter.js (HMAC-SHA512, sabit hash sırası) */
@@ -190,9 +192,124 @@ export const akbankV2Gateway: PaymentGateway = {
         responseMessage ||
         raw.hostMessage ||
         (success ? '3D Secure başarılı' : '3D Secure başarısız'),
-      raw,
+      raw: {
+        ...raw,
+        AuthCode: raw.authCode || raw.AuthCode || '',
+        Rrn: raw.rrn || raw.Rrn || '',
+      },
       needsProvision: false,
     };
+  },
+
+  /**
+   * iptal txnCode 1003 / iade 1002 — referans akbank.adapter.js
+   * API: pos.apiUrl veya varsayılan virtualpos/transaction/process
+   */
+  async reverse(input: ReversePaymentInput): Promise<ReversePaymentResult> {
+    const merchantSafeId = input.pos.merchantId.trim();
+    const terminalSafeId = input.pos.terminalSafeId.trim();
+    const secretKey = input.pos.securityKey.trim();
+    const orderId = (input.bankOrderId || input.orderId || '').trim();
+    const apiUrl = (
+      input.pos.apiUrl ||
+      'https://api.akbank.com/api/v1/payment/virtualpos/transaction/process'
+    ).trim();
+
+    if (!merchantSafeId || !terminalSafeId || !secretKey) {
+      return { success: false, message: 'Akbank iptal/iade: POS kimlik bilgileri eksik' };
+    }
+    if (!orderId) {
+      return { success: false, message: 'Akbank iptal/iade: orderId bulunamadı' };
+    }
+
+    const randomNumber = random128();
+    const reqDt = requestDateTime();
+    const emailAddress = 'noreply@tahsilat.anypay.com.tr';
+    const ipAddress = (input.clientIp || '127.0.0.1').replace(/^::ffff:/, '');
+
+    const payload: Record<string, unknown> =
+      input.kind === 'void'
+        ? {
+            version: '1.00',
+            txnCode: '1003',
+            requestDateTime: reqDt,
+            randomNumber,
+            terminal: { merchantSafeId, terminalSafeId },
+            order: { orderId },
+            customer: { emailAddress, ipAddress },
+          }
+        : {
+            version: '1.00',
+            txnCode: '1002',
+            requestDateTime: reqDt,
+            randomNumber,
+            terminal: { merchantSafeId, terminalSafeId },
+            order: { orderId },
+            transaction: {
+              amount: formatAmount(input.amount ?? 0),
+              currencyCode: 949,
+            },
+            customer: { emailAddress, ipAddress },
+          };
+
+    try {
+      const postData = JSON.stringify(payload);
+      const authHash = hmacB64(postData, secretKey);
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'auth-hash': authHash,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: postData,
+        signal: AbortSignal.timeout(30_000),
+      });
+      const rawText = await response.text();
+      let data: {
+        responseCode?: string;
+        responseMessage?: string;
+        hostMessage?: string;
+        order?: { orderId?: string };
+        transaction?: { transactionId?: string; authCode?: string; rrn?: string };
+      };
+      try {
+        data = JSON.parse(rawText) as typeof data;
+      } catch {
+        return {
+          success: false,
+          message: `Akbank API yanıtı geçersiz: ${rawText.slice(0, 200)}`,
+          raw: rawText,
+        };
+      }
+      if (!response.ok) {
+        return {
+          success: false,
+          message: `Akbank API hatası: ${response.status}`,
+          raw: data,
+        };
+      }
+      const ok = data.responseCode === SUCCESS_CODE;
+      return {
+        success: ok,
+        message: ok
+          ? 'Başarılı'
+          : data.responseMessage || data.hostMessage || 'Akbank işlemi başarısız',
+        responseCode: data.responseCode,
+        authCode: data.transaction?.authCode || undefined,
+        referenceCode:
+          data.transaction?.rrn ||
+          data.order?.orderId ||
+          data.transaction?.transactionId ||
+          undefined,
+        raw: data,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'Akbank iptal/iade başarısız',
+      };
+    }
   },
 };
 

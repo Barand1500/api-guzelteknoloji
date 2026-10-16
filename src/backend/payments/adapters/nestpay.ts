@@ -4,6 +4,8 @@ import type {
   Initiate3dInput,
   Initiate3dResult,
   PaymentGateway,
+  ReversePaymentInput,
+  ReversePaymentResult,
 } from '../types.js';
 
 /**
@@ -57,6 +59,33 @@ function currencyCode(code: string): string {
   if (u === 'USD' || u === '840') return '840';
   if (u === 'EUR' || u === '978') return '978';
   return '949';
+}
+
+function xmlEscape(value: string): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+function xmlTag(xml: string, tag: string): string {
+  const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i');
+  const m = String(xml || '').match(re);
+  return (m?.[1] || '').trim();
+}
+
+async function nestpayCc5Post(apiUrl: string, xml: string): Promise<string> {
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/xml' },
+    body: xml,
+    signal: AbortSignal.timeout(30_000),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`NestPay API hatası: ${res.status}`);
+  return text;
 }
 
 export const nestpayGateway: PaymentGateway = {
@@ -190,6 +219,66 @@ export const nestpayGateway: PaymentGateway = {
         : undefined,
     };
   },
+
+  /**
+   * CC5 Void / Credit — referans isbankasi.adapter.js iptal/iade
+   * POS: terminalSafeId=API User, terminalPassword=API Pass, apiUrl=CC5 endpoint
+   */
+  async reverse(input: ReversePaymentInput): Promise<ReversePaymentResult> {
+    const clientId = input.pos.merchantId.trim();
+    const apiUser = input.pos.terminalSafeId.trim();
+    const apiPassword = input.pos.terminalPassword.trim();
+    const apiUrl = (input.pos.apiUrl || '').trim();
+
+    if (!clientId || !apiUser || !apiPassword) {
+      return {
+        success: false,
+        message: 'NestPay iptal/iade: API kullanıcı / şifre eksik (Terminal alanları)',
+      };
+    }
+    if (!apiUrl) {
+      return { success: false, message: 'NestPay iptal/iade: API URL bulunamadı (Banka Düzenle)' };
+    }
+    if (!input.orderId) {
+      return { success: false, message: 'NestPay iptal/iade: sipariş no yok' };
+    }
+
+    const type = input.kind === 'void' ? 'Void' : 'Credit';
+    const totalXml =
+      input.kind === 'refund' && input.amount != null
+        ? `\n    <Total>${xmlEscape(Number(input.amount).toFixed(2))}</Total>`
+        : '';
+
+    const xml = `
+<CC5Request>
+    <Name>${xmlEscape(apiUser)}</Name>
+    <Password>${xmlEscape(apiPassword)}</Password>
+    <ClientId>${xmlEscape(clientId)}</ClientId>
+    <Type>${type}</Type>
+    <OrderId>${xmlEscape(input.orderId)}</OrderId>${totalXml}
+</CC5Request>`.trim();
+
+    try {
+      const raw = await nestpayCc5Post(apiUrl, xml);
+      const responseText = xmlTag(raw, 'Response');
+      const approved = responseText === 'Approved';
+      return {
+        success: approved,
+        message: approved
+          ? 'Başarılı'
+          : xmlTag(raw, 'ErrMsg') || responseText || 'NestPay işlemi başarısız',
+        responseCode: responseText,
+        authCode: xmlTag(raw, 'AuthCode') || undefined,
+        referenceCode: xmlTag(raw, 'HostRefNum') || xmlTag(raw, 'TransId') || undefined,
+        raw: { text: raw },
+      };
+    } catch (err) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'NestPay iptal/iade başarısız',
+      };
+    }
+  },
 };
 
 export function looksLikeNestPay(pos: {
@@ -210,12 +299,28 @@ export function looksLikeNestPay(pos: {
   ) {
     return false;
   }
+  // DenizBank / QNB Intertech / özel altyapılar NestPay değil
+  if (blob.includes('denizbank') || blob.includes('deniz bank') || blob.includes('intertech')) {
+    return false;
+  }
+  if (
+    blob.includes('qnb') ||
+    blob.includes('finansbank') ||
+    blob.includes('yapikredi') ||
+    blob.includes('yapı kredi') ||
+    blob.includes('yapi kredi') ||
+    blob.includes('posnet') ||
+    blob.includes('tosla')
+  ) {
+    return false;
+  }
+  if (blob.includes('iyzico') || blob.includes('iyzi') || blob.includes('paytr') || blob.includes('kuveyt') || blob.includes('halkode')) {
+    return false;
+  }
   return (
     blob.includes('nestpay') ||
     blob.includes('asseco') ||
     blob.includes('est3d') ||
-    blob.includes('yapikredi') ||
-    blob.includes('qnb') ||
     blob.includes('isbank') ||
     blob.includes('ziraat') ||
     blob.includes('halk') ||

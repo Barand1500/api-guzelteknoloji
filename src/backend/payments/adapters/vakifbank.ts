@@ -5,6 +5,8 @@ import type {
   Initiate3dInput,
   Initiate3dResult,
   PaymentGateway,
+  ReversePaymentInput,
+  ReversePaymentResult,
 } from '../types.js';
 
 /**
@@ -323,5 +325,68 @@ export const vakifbankGateway: PaymentGateway = {
       },
       needsProvision: false,
     };
+  },
+
+  /** Cancel / Refund — referans vakifbank.adapter.js iptal/iade */
+  async reverse(input: ReversePaymentInput): Promise<ReversePaymentResult> {
+    const merchantId = input.pos.merchantId.trim();
+    const password =
+      (input.pos.securityKey || '').trim() || (input.pos.terminalPassword || '').trim();
+    const transactionId = (input.bankOrderId || input.orderId || '').trim();
+    const vposUrl =
+      (input.pos.xmlUrl || '').trim() ||
+      (input.pos.apiUrl || '').trim() ||
+      'https://onlineodeme.vakifbank.com.tr:4443/VposService/v3/Vposreq.aspx';
+
+    if (!merchantId || !password) {
+      return { success: false, message: 'VakıfBank iptal/iade: Merchant / Password eksik' };
+    }
+    if (!transactionId) {
+      return { success: false, message: 'VakıfBank iptal/iade: transactionId bulunamadı' };
+    }
+
+    const isRefund = input.kind === 'refund';
+    const xml = isRefund
+      ? `
+<VposRequest>
+    <MerchantId>${xmlEscape(merchantId)}</MerchantId>
+    <Password>${xmlEscape(password)}</Password>
+    <TransactionType>Refund</TransactionType>
+    <CurrencyAmount>${xmlEscape(amountDecimal(input.amount ?? 0))}</CurrencyAmount>
+    <ClientIp>${xmlEscape(input.clientIp || '127.0.0.1')}</ClientIp>
+    <ReferenceTransactionId>${xmlEscape(transactionId)}</ReferenceTransactionId>
+</VposRequest>`
+      : `
+<VposRequest>
+    <MerchantId>${xmlEscape(merchantId)}</MerchantId>
+    <Password>${xmlEscape(password)}</Password>
+    <TransactionType>Cancel</TransactionType>
+    <ClientIp>${xmlEscape(input.clientIp || '127.0.0.1')}</ClientIp>
+    <ReferenceTransactionId>${xmlEscape(transactionId)}</ReferenceTransactionId>
+</VposRequest>`;
+
+    try {
+      const vposRaw = await postVposXml(vposUrl, xml);
+      const resultCode = xmlTag(vposRaw, 'ResultCode');
+      const resultDetail = xmlTag(vposRaw, 'ResultDetail');
+      const authCode = xmlTag(vposRaw, 'AuthCode');
+      const rrn = xmlTag(vposRaw, 'Rrn');
+      const ok = resultCode === '0000';
+      return {
+        success: ok,
+        message: ok
+          ? 'Başarılı'
+          : `${resultCode || ''}${resultCode ? ' - ' : ''}${resultDetail || 'VakıfBank işlemi başarısız'}`,
+        responseCode: resultCode,
+        authCode: authCode || undefined,
+        referenceCode: rrn || undefined,
+        raw: { text: vposRaw, resultCode, resultDetail },
+      };
+    } catch (err) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'VakıfBank iptal/iade başarısız',
+      };
+    }
   },
 };

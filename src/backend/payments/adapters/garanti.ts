@@ -4,6 +4,8 @@ import type {
   Initiate3dInput,
   Initiate3dResult,
   PaymentGateway,
+  ReversePaymentInput,
+  ReversePaymentResult,
 } from '../types.js';
 
 /**
@@ -39,6 +41,10 @@ function resolveMode(gateway3dUrl: string): 'PROD' | 'TEST' {
   return 'PROD';
 }
 
+function securityDataOf(password: string, terminalId: string): string {
+  return sha1Upper(`${password}${padTerminalId9(terminalId)}`);
+}
+
 /** Referans: sha1(password + terminalId9) sonra sha1(terminalId + order + amount + ok + fail + type + taksit + storeKey + securityData) */
 function garantiHash(opts: {
   terminalId: string;
@@ -51,11 +57,48 @@ function garantiHash(opts: {
   storeKey: string;
   password: string;
 }): string {
-  const terminalIdNew = padTerminalId9(opts.terminalId);
-  const securityData = sha1Upper(`${opts.password}${terminalIdNew}`);
+  const securityData = securityDataOf(opts.password, opts.terminalId);
   return sha1Upper(
     `${opts.terminalId}${opts.orderNumber}${opts.orderAmount}${opts.successUrl}${opts.failUrl}${opts.type}${opts.installmentStr}${opts.storeKey}${securityData}`,
   );
+}
+
+/** iptal/iade hash — referans garantiRefundVoidHash */
+function refundVoidHash(opts: {
+  orderNo: string;
+  terminalId: string;
+  amount: string;
+  password: string;
+}): string {
+  const securityData = securityDataOf(opts.password, opts.terminalId);
+  return sha1Upper(`${opts.orderNo}${opts.terminalId}${opts.amount}${securityData}`);
+}
+
+function xmlEscape(value: string): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+function xmlTag(xml: string, tag: string): string {
+  const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'i');
+  const m = String(xml || '').match(re);
+  return (m?.[1] || '').trim();
+}
+
+async function postGvpsXml(apiUrl: string, xml: string): Promise<string> {
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ data: xml }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`Garanti API hatası: ${response.status}`);
+  return raw;
 }
 
 export function looksLikeGaranti(pos: {
@@ -193,8 +236,120 @@ export const garantiGateway: PaymentGateway = {
           raw.errmsg ||
           raw.ErrMsg ||
           'Ödeme başarısız',
-      raw,
+      raw: {
+        ...raw,
+        AuthCode: raw.authcode || raw.AuthCode || raw.procreturncode || '',
+        HostRefNum: raw.hostrefnum || raw.HostRefNum || '',
+        RetrefNum: raw.retrefnum || raw.RetrefNum || '',
+        Rrn: raw.retrefnum || raw.RetrefNum || raw.hostrefnum || raw.HostRefNum || '',
+      },
       needsProvision: false,
     };
+  },
+
+  /** void / refund GVPS XML — referans garanti.adapter.js iptal/iade */
+  async reverse(input: ReversePaymentInput): Promise<ReversePaymentResult> {
+    const merchantId = input.pos.merchantId.trim();
+    const terminalId =
+      input.pos.terminalSafeId.replace(/\D/g, '').trim() || input.pos.terminalSafeId.trim();
+    const password = input.pos.terminalPassword.trim();
+    const apiUrl = (input.pos.apiUrl || input.pos.xmlUrl || '').trim();
+    const orderNo = (input.bankOrderId || input.orderId || '').trim();
+    const amount = amountCents(input.amount ?? 0);
+    const ipAddress = (input.clientIp || '127.0.0.1').replace(/^::ffff:/, '');
+    const refNum = (input.referenceCode || '').trim();
+
+    if (!merchantId || !terminalId || !password) {
+      return { success: false, message: 'Garanti iptal/iade: POS kimlik bilgileri eksik' };
+    }
+    if (!apiUrl) {
+      return { success: false, message: 'Garanti iptal/iade: API URL bulunamadı (Banka Düzenle)' };
+    }
+    if (!orderNo) {
+      return { success: false, message: 'Garanti iptal/iade: sipariş no yok' };
+    }
+    if (input.kind === 'void' && !refNum) {
+      return { success: false, message: 'Garanti iptal için referans kodu (RetrefNum) bulunamadı' };
+    }
+
+    const hashData = refundVoidHash({ orderNo, terminalId, amount, password });
+
+    const xml =
+      input.kind === 'void'
+        ? `<?xml version="1.0" encoding="ISO-8859-9"?>
+<GVPSRequest>
+  <Mode>PROD</Mode>
+  <Version>v0.01</Version>
+  <ChannelCode></ChannelCode>
+  <Terminal>
+    <ProvUserID>PROVRFN</ProvUserID>
+    <HashData>${xmlEscape(hashData)}</HashData>
+    <UserID>${xmlEscape(orderNo)}</UserID>
+    <ID>${xmlEscape(terminalId)}</ID>
+    <MerchantID>${xmlEscape(merchantId)}</MerchantID>
+  </Terminal>
+  <Customer>
+    <IPAddress>${xmlEscape(ipAddress)}</IPAddress>
+    <EmailAddress>noreply@tahsilat.anypay.com.tr</EmailAddress>
+  </Customer>
+  <Order>
+    <OrderID>${xmlEscape(orderNo)}</OrderID>
+    <GroupID></GroupID>
+  </Order>
+  <Transaction>
+    <Type>void</Type>
+    <InstallmentCnt></InstallmentCnt>
+    <Amount>${xmlEscape(amount)}</Amount>
+    <OriginalRetrefNum>${xmlEscape(refNum)}</OriginalRetrefNum>
+    <CurrencyCode>949</CurrencyCode>
+    <CardholderPresentCode>0</CardholderPresentCode>
+    <MotoInd>N</MotoInd>
+  </Transaction>
+</GVPSRequest>`
+        : `<?xml version="1.0" encoding="ISO-8859-9"?>
+<GVPSRequest>
+  <Mode>PROD</Mode>
+  <Version>v0.01</Version>
+  <Terminal>
+    <ProvUserID>PROVRFN</ProvUserID>
+    <HashData>${xmlEscape(hashData)}</HashData>
+    <UserID>${xmlEscape(orderNo)}</UserID>
+    <ID>${xmlEscape(terminalId)}</ID>
+    <MerchantID>${xmlEscape(merchantId)}</MerchantID>
+  </Terminal>
+  <Customer>
+    <IPAddress>${xmlEscape(ipAddress)}</IPAddress>
+  </Customer>
+  <Order>
+    <OrderID>${xmlEscape(orderNo)}</OrderID>
+  </Order>
+  <Transaction>
+    <Type>refund</Type>
+    <Amount>${xmlEscape(amount)}</Amount>
+    <CurrencyCode>949</CurrencyCode>
+  </Transaction>
+</GVPSRequest>`;
+
+    try {
+      const raw = await postGvpsXml(apiUrl, xml);
+      const code = xmlTag(raw, 'Code') || xmlTag(raw, 'ResponseCode');
+      const errorMessage =
+        xmlTag(raw, 'ErrorMsg') || xmlTag(raw, 'ErrorMessage') || xmlTag(raw, 'SysErrMsg');
+      const ok = code === '00';
+      const retref = xmlTag(raw, 'RetrefNum') || xmlTag(raw, 'HostRefNum');
+      return {
+        success: ok,
+        message: ok ? 'Başarılı' : errorMessage || 'Garanti işlemi başarısız',
+        responseCode: code,
+        authCode: xmlTag(raw, 'AuthCode') || undefined,
+        referenceCode: retref || undefined,
+        raw: { text: raw },
+      };
+    } catch (err) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'Garanti iptal/iade başarısız',
+      };
+    }
   },
 };
