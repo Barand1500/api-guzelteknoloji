@@ -5,12 +5,16 @@ import type { TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
 import "./binList.css";
 
-type FormState = { name: string; active: boolean };
-const emptyForm: FormState = { name: "", active: true };
+type FormState = { name: string; code: string; city: string; district: string; active: boolean };
+const emptyForm: FormState = { name: "", code: "", city: "", district: "", active: true };
 
 type Props = { token: string };
 
-/** Vergi Daireleri — MySQL */
+function rowCity(row: TahsilatAdminRow) {
+  return str(row, "city") || str(row, "province");
+}
+
+/** Vergi Daireleri — MySQL (AnyPay: name / city / district) */
 export default function TaxOfficesListPage({ token }: Props) {
   const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "tax-offices");
   const [query, setQuery] = useState("");
@@ -50,7 +54,11 @@ export default function TaxOfficesListPage({ token }: Props) {
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("tr-TR");
     if (!q) return rows;
-    return rows.filter((r) => str(r, "name").toLocaleLowerCase("tr-TR").includes(q));
+    return rows.filter((r) =>
+      `${str(r, "name")} ${rowCity(r)} ${str(r, "district")} ${str(r, "code")}`
+        .toLocaleLowerCase("tr-TR")
+        .includes(q),
+    );
   }, [rows, query]);
 
   function openCreate() {
@@ -62,7 +70,13 @@ export default function TaxOfficesListPage({ token }: Props) {
 
   function openEdit(row: TahsilatAdminRow) {
     setEditId(row.id);
-    setForm({ name: str(row, "name"), active: row.active !== false });
+    setForm({
+      name: str(row, "name"),
+      code: str(row, "code"),
+      city: rowCity(row),
+      district: str(row, "district"),
+      active: row.active !== false,
+    });
     setError("");
     setModalOpen(true);
   }
@@ -75,8 +89,19 @@ export default function TaxOfficesListPage({ token }: Props) {
 
   async function onSave() {
     const name = form.name.trim();
+    const city = form.city.trim();
+    const district = form.district.trim();
+    const code = form.code.trim();
     if (!name) {
       setError("Vergi dairesi adı gerekli.");
+      return;
+    }
+    if (!city) {
+      setError("İl gerekli.");
+      return;
+    }
+    if (!district) {
+      setError("İlçe gerekli.");
       return;
     }
     const dup = rows.some(
@@ -93,7 +118,8 @@ export default function TaxOfficesListPage({ token }: Props) {
       await saveRow({
         id: editId || `new-${Date.now()}`,
         active: form.active,
-        data: { name, code: "", province: "" },
+        // province = city: eski AnyPay mapping / province kolonlu satırlar
+        data: { name, code, city, district, province: city },
       });
       closeModal();
     } catch (err) {
@@ -144,7 +170,7 @@ export default function TaxOfficesListPage({ token }: Props) {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Vergi dairesi ara…"
+              placeholder="Vergi dairesi, il veya ilçe ara…"
               aria-label="Vergi dairesi ara"
             />
           </label>
@@ -157,6 +183,8 @@ export default function TaxOfficesListPage({ token }: Props) {
               <thead>
                 <tr>
                   <th>Vergi Dairesi</th>
+                  <th>İl</th>
+                  <th>İlçe</th>
                   <th>Durum</th>
                   <th style={{ textAlign: "right" }}>İşlemler</th>
                 </tr>
@@ -165,6 +193,8 @@ export default function TaxOfficesListPage({ token }: Props) {
                 {filtered.map((row) => (
                   <tr key={row.id}>
                     <td>{str(row, "name")}</td>
+                    <td>{rowCity(row) || "—"}</td>
+                    <td>{str(row, "district") || "—"}</td>
                     <td>
                       <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
                         {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
@@ -199,11 +229,11 @@ export default function TaxOfficesListPage({ token }: Props) {
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
-          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(440px, 100%)" }}>
+          <div ref={modalRef} className="bin-modal" role="dialog" aria-modal="true" style={{ width: "min(480px, 100%)" }}>
             <div className="bin-modal-head">
               <div>
                 <h2>{editId ? "Vergi Dairesi Düzenle" : "Yeni Vergi Dairesi"}</h2>
-                <p>Vergi dairesi bilgilerini girin.</p>
+                <p>Ad, il ve ilçe AnyPay ile aynı alanlardır.</p>
               </div>
               <button type="button" className="bin-modal-close" onClick={closeModal}>
                 <X size={18} />
@@ -218,6 +248,32 @@ export default function TaxOfficesListPage({ token }: Props) {
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   autoFocus
+                />
+              </div>
+              <div className="bin-field">
+                <label>Kod</label>
+                <input
+                  value={form.code}
+                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                  placeholder="Opsiyonel"
+                />
+              </div>
+              <div className="bin-field">
+                <label>
+                  İl <em>*</em>
+                </label>
+                <input
+                  value={form.city}
+                  onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                />
+              </div>
+              <div className="bin-field">
+                <label>
+                  İlçe <em>*</em>
+                </label>
+                <input
+                  value={form.district}
+                  onChange={(e) => setForm((f) => ({ ...f, district: e.target.value }))}
                 />
               </div>
               <div className="vpos-active-row">

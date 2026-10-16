@@ -135,6 +135,9 @@ const RESOURCE_META: Record<Exclude<TahsilatResource, "bins">, { name: string; s
     columns: [
       { name: "name", fieldType: "text" },
       { name: "code", fieldType: "text" },
+      // city/district = AnyPay köprüsü; province eski kayıtlar için tutulur
+      { name: "city", fieldType: "text" },
+      { name: "district", fieldType: "text" },
       { name: "province", fieldType: "text" },
     ],
   },
@@ -369,6 +372,17 @@ export async function listTahsilatResource(
           .includes(key),
       );
     }
+  }
+
+  // AnyPay: city/district; eski satırlarda yalnızca province dolu olabilir
+  if (resource === "tax-offices") {
+    data = data.map((row) => {
+      const r = row as Record<string, unknown>;
+      const city = String(r.city || r.province || "").trim();
+      const district = String(r.district || "").trim();
+      const province = String(r.province || city).trim();
+      return { ...r, city, district, province };
+    });
   }
 
   return {
