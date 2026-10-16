@@ -1,8 +1,9 @@
 import gsap from "gsap";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Calendar, Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Calendar, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = {
@@ -27,8 +28,16 @@ type Props = { token: string };
 
 /** Sürümler — MySQL (AnyPay sürüm geçmişi kaynağı) */
 export default function VersionsListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "versions");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "versions");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -62,15 +71,16 @@ export default function VersionsListPage({ token }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) =>
-      `${str(r, "version")} ${str(r, "added")} ${str(r, "fixed")} ${str(r, "removed")}`
-        .toLocaleLowerCase("tr-TR")
-        .includes(q),
-    );
-  }, [rows, query]);
+  function versionSummary(row: TahsilatAdminRow) {
+    const bits = [
+      str(row, "added") ? `+${str(row, "added").split(/\n/).filter(Boolean).length}` : "",
+      str(row, "fixed") ? `~${str(row, "fixed").split(/\n/).filter(Boolean).length}` : "",
+      str(row, "removed") ? `-${str(row, "removed").split(/\n/).filter(Boolean).length}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return bits || "—";
+  }
 
   function openCreate() {
     setEditId(null);
@@ -119,12 +129,37 @@ export default function VersionsListPage({ token }: Props) {
         },
       });
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "version", label: "Sürüm", mono: true, accessor: (r) => str(r, "version") || "—" },
+    { id: "releasedAt", label: "Tarih", accessor: (r) => str(r, "releasedAt") || "—" },
+    { id: "summary", label: "Özet", accessor: (r) => versionSummary(r) },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button type="button" className="bin-icon-btn" title="Düzenle" onClick={() => openEdit(row)}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className="bin-icon-btn danger" title="Sil" onClick={() => setDeleteId(row.id)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function onDelete() {
     if (!deleteId) return;
@@ -154,63 +189,57 @@ export default function VersionsListPage({ token }: Props) {
         </button>
       </header>
 
-      <div className="bin-toolbar">
-        <label className="bin-search">
-          <Search size={16} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ara…"
-          />
-        </label>
-        <span className="bin-count">{loading ? "…" : `${filtered.length} kayıt`}</span>
-      </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-      <div className="bin-table-wrap">
-        <table className="bin-table">
-          <thead>
-            <tr>
-              <th>Sürüm</th>
-              <th>Tarih</th>
-              <th>Özet</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((row) => {
-              const bits = [
-                str(row, "added") ? `+${str(row, "added").split(/\n/).filter(Boolean).length}` : "",
-                str(row, "fixed") ? `~${str(row, "fixed").split(/\n/).filter(Boolean).length}` : "",
-                str(row, "removed") ? `-${str(row, "removed").split(/\n/).filter(Boolean).length}` : "",
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              return (
-                <tr key={row.id}>
-                  <td className="bin-strong">{str(row, "version") || "—"}</td>
-                  <td>{str(row, "releasedAt") || "—"}</td>
-                  <td className="bin-muted">{bits || "—"}</td>
-                  <td className="bin-actions">
-                    <button type="button" title="Düzenle" onClick={() => openEdit(row)}>
-                      <Pencil size={16} />
-                    </button>
-                    <button type="button" title="Sil" onClick={() => setDeleteId(row.id)}>
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-            {!loading && filtered.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="bin-empty">
-                  Henüz sürüm yok. Yeni Sürüm ile ekleyin.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      <TahsilatDataTable
+        rows={rows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-versions"
+        searchPlaceholder="Sürüm veya not ara…"
+        loading={loading}
+        emptyTitle="Henüz sürüm yok"
+        emptyHint="Yeni Sürüm ile ekleyin veya Excel'den içe aktarın."
+        exportFileName="surumler"
+        excelImport={{
+          title: "Sürüm Excel içe aktar",
+          templateFileName: "surumler-sablon.xlsx",
+          columns: [
+            { key: "version", label: "Sürüm", required: true },
+            { key: "releasedAt", label: "Tarih", aliases: ["yayın tarihi"] },
+            { key: "added", label: "Eklenen" },
+            { key: "fixed", label: "Düzeltilen" },
+            { key: "removed", label: "Çıkarılan" },
+          ],
+          validateRow: (cells) => (!cells.version.trim() ? "Sürüm numarası gerekli" : null),
+          mapRow: (cells, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            active: true,
+            data: {
+              version: cells.version.trim(),
+              releasedAt: cells.releasedAt.trim() || new Date().toISOString().slice(0, 10),
+              added: cells.added,
+              fixed: cells.fixed,
+              removed: cells.removed,
+            },
+          }),
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "version").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "version").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni sürüm yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay">

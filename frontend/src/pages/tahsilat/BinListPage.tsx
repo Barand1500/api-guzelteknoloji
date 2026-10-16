@@ -1,8 +1,9 @@
 import gsap from "gsap";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { CreditCard, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CreditCard, Pencil, Plus, Trash2, X } from "lucide-react";
 import { fetchTahsilatResource, field, type TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = {
@@ -19,13 +20,20 @@ type Props = { token: string };
 
 /** BIN Listesi — MySQL (AnyPay /v1/tahsilat/bins) */
 export default function BinListPage({ token }: Props) {
-  const { rows, loading, saving, error: dbError, setError: setDbError, saveRow, removeRow } =
-    useTahsilatDb(token, "bins");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "bins");
   const [bankOptions, setBankOptions] = useState<string[]>([]);
   const [typeOptions, setTypeOptions] = useState<string[]>([]);
   const [brandOptions, setBrandOptions] = useState<string[]>([]);
   const [kindOptions, setKindOptions] = useState<string[]>([]);
-  const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -89,16 +97,6 @@ export default function BinListPage({ token }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    return rows.filter((r) => {
-      if (!q) return true;
-      return `${str(r, "bin")} ${str(r, "bank")} ${str(r, "type")} ${str(r, "brand")} ${str(r, "kind")}`
-        .toLocaleLowerCase("tr-TR")
-        .includes(q);
-    });
-  }, [rows, query]);
-
   function openCreate() {
     setEditId(null);
     setForm(emptyForm);
@@ -118,6 +116,44 @@ export default function BinListPage({ token }: Props) {
     setError("");
     setModalOpen(true);
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "bin", label: "BIN", mono: true, accessor: (r) => str(r, "bin") },
+    { id: "bank", label: "Banka", accessor: (r) => str(r, "bank") },
+    { id: "type", label: "Kart Tipi", accessor: (r) => str(r, "type") },
+    { id: "brand", label: "Kart Markası", accessor: (r) => str(r, "brand") },
+    { id: "kind", label: "Kart Türü", accessor: (r) => str(r, "kind") },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button
+            type="button"
+            className="bin-icon-btn"
+            title="Düzenle"
+            aria-label="Düzenle"
+            onClick={() => openEdit(row)}
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            className="bin-icon-btn danger"
+            title="Sil"
+            aria-label="Sil"
+            onClick={() => setDeleteId(row.id)}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   function closeModal() {
     setModalOpen(false);
@@ -208,83 +244,62 @@ export default function BinListPage({ token }: Props) {
         </p>
       ) : null}
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <label className="bin-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="BIN, banka veya marka ara…"
-              aria-label="BIN ara"
-            />
-          </label>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
-
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th>BIN</th>
-                  <th>Banka</th>
-                  <th>Kart Tipi</th>
-                  <th>Kart Markası</th>
-                  <th>Kart Türü</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td className="bin-mono">{str(row, "bin")}</td>
-                    <td>{str(row, "bank")}</td>
-                    <td>{str(row, "type")}</td>
-                    <td>{str(row, "brand")}</td>
-                    <td>{str(row, "kind")}</td>
-                    <td>
-                      <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
-                          onClick={() => setDeleteId(row.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>
-                {loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz BIN yok"}
-              </strong>
-              <span>
-                {loading
-                  ? "Veritabanından okunuyor."
-                  : query
-                    ? "Aramayı değiştirin."
-                    : "İlk BIN kaydını ekleyin."}
-              </span>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={rows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-bins"
+        searchPlaceholder="BIN, banka veya marka ara…"
+        loading={loading}
+        emptyTitle="Henüz BIN yok"
+        emptyHint="İlk BIN kaydını ekleyin veya Excel’den içe aktarın."
+        exportFileName="bin-listesi"
+        excelImport={{
+          title: "BIN Excel içe aktar",
+          templateFileName: "bin-sablon.xlsx",
+          columns: [
+            { key: "bin", label: "BIN", aliases: ["bin no", "bin numarası"], required: true },
+            { key: "bank", label: "Banka", aliases: ["banka adı"], required: true },
+            { key: "type", label: "Kart Tipi", aliases: ["tip", "kart tipi"], required: true },
+            {
+              key: "brand",
+              label: "Kart Markası",
+              aliases: ["marka", "kart markası"],
+              required: true,
+            },
+            { key: "kind", label: "Kart Türü", aliases: ["tür", "kart türü"], required: true },
+          ],
+          validateRow: (cells) => {
+            const bin = cells.bin.replace(/\D/g, "");
+            if (bin.length < 4) return "BIN en az 4 hane olmalı";
+            return null;
+          },
+          mapRow: (cells, index) => {
+            const bin = cells.bin.replace(/\D/g, "").slice(0, 8);
+            return {
+              id: `import-${Date.now()}-${index}`,
+              active: true,
+              data: {
+                bin,
+                bank: cells.bank.trim(),
+                type: cells.type.trim(),
+                brand: cells.brand.trim(),
+                kind: cells.kind.trim(),
+              },
+            };
+          },
+          onConfirm: async (imported) => {
+            // Mevcut BIN’lerle çakışanları atla — üzerine yazma
+            const existing = new Set(rows.map((r) => str(r, "bin")));
+            const fresh = imported.filter((r) => !existing.has(str(r, "bin")));
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni BIN yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

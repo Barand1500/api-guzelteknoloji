@@ -1,8 +1,9 @@
 import gsap from "gsap";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Award, ImagePlus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Award, ImagePlus, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = { name: string; logoDataUrl: string };
@@ -14,8 +15,16 @@ type Props = { token: string };
 
 /** Kart Markaları — MySQL; BIN marka seçimi */
 export default function CardBrandsListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "card-brands");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "card-brands");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -49,12 +58,6 @@ export default function CardBrandsListPage({ token }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) => str(r, "name").toLocaleLowerCase("tr-TR").includes(q));
-  }, [rows, query]);
 
   function openCreate() {
     setEditId(null);
@@ -124,12 +127,62 @@ export default function CardBrandsListPage({ token }: Props) {
     try {
       await saveRow(nextRow);
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    {
+      id: "logo",
+      label: "Logo",
+      filterable: false,
+      accessor: () => "",
+      render: (row) => (
+        <span className="bank-logo-cell">
+          {str(row, "logo") ? (
+            <img src={str(row, "logo")} alt="" />
+          ) : (
+            <Award size={18} strokeWidth={1.7} />
+          )}
+        </span>
+      ),
+    },
+    { id: "name", label: "Marka Adı", accessor: (r) => str(r, "name") },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button
+            type="button"
+            className="bin-icon-btn"
+            title="Düzenle"
+            aria-label="Düzenle"
+            onClick={() => openEdit(row)}
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            className="bin-icon-btn danger"
+            title="Sil"
+            aria-label="Sil"
+            onClick={() => setDeleteId(row.id)}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     if (!deleteId) return;
@@ -167,77 +220,45 @@ export default function CardBrandsListPage({ token }: Props) {
 
       <p className="bin-hint">Bu liste BIN formundaki Kart Markası seçimine yansır.</p>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <label className="bin-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Marka adı ara…"
-              aria-label="Marka ara"
-            />
-          </label>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 72 }}>Logo</th>
-                  <th>Marka Adı</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <span className="bank-logo-cell">
-                        {str(row, "logo") ? (
-                          <img src={str(row, "logo")} alt="" />
-                        ) : (
-                          <Award size={18} strokeWidth={1.7} />
-                        )}
-                      </span>
-                    </td>
-                    <td>{str(row, "name")}</td>
-                    <td>
-                      <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
-                          onClick={() => setDeleteId(row.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>{query ? "Eşleşen kayıt yok" : "Henüz marka yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk markayı ekleyin."}</span>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={rows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-card-brands"
+        searchPlaceholder="Marka adı ara…"
+        loading={loading}
+        emptyTitle="Henüz marka yok"
+        emptyHint="İlk markayı ekleyin veya Excel'den içe aktarın."
+        exportFileName="kart-markalari"
+        excelImport={{
+          title: "Kart markası Excel içe aktar",
+          templateFileName: "kart-markalari-sablon.xlsx",
+          columns: [{ key: "name", label: "Marka Adı", aliases: ["marka", "ad"], required: true }],
+          validateRow: (cells) => (!cells.name.trim() ? "Marka adı gerekli" : null),
+          mapRow: (cells, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            active: true,
+            data: { name: cells.name.trim(), logo: "" },
+          }),
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "name").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "name").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni marka yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

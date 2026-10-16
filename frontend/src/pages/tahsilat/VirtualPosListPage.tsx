@@ -1,8 +1,9 @@
 import gsap from "gsap";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, CreditCard, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, CreditCard, Pencil, Plus, Trash2, X } from "lucide-react";
 import { fetchTahsilatResource, type TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = { name: string; bank: string; variables: string; active: boolean };
@@ -12,9 +13,17 @@ type Props = { token: string };
 
 /** Ana Sanal Poslar — MySQL */
 export default function VirtualPosListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "virtual-pos");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "virtual-pos");
   const [bankNames, setBankNames] = useState<string[]>([]);
-  const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -67,16 +76,6 @@ export default function VirtualPosListPage({ token }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) =>
-      `${str(r, "name")} ${str(r, "bank")} ${str(r, "variables")}`
-        .toLocaleLowerCase("tr-TR")
-        .includes(q),
-    );
-  }, [rows, query]);
-
   function openCreate() {
     setEditId(null);
     setForm(emptyForm);
@@ -121,6 +120,7 @@ export default function VirtualPosListPage({ token }: Props) {
         data: { name, bank, variables: form.variables.trim() },
       });
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
@@ -141,6 +141,40 @@ export default function VirtualPosListPage({ token }: Props) {
     }
   }
 
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "name", label: "Sanal Pos", accessor: (r) => str(r, "name") },
+    { id: "bank", label: "Banka", accessor: (r) => str(r, "bank") },
+    {
+      id: "status",
+      label: "Durum",
+      accessor: (r) => (r.active !== false ? "Aktif" : "Pasif"),
+      render: (row) => (
+        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+          {row.active !== false ? "Aktif" : "Pasif"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className="bin-icon-btn danger" onClick={() => setDeleteId(row.id)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="bin-page">
       <div className="bin-page-head">
@@ -156,7 +190,7 @@ export default function VirtualPosListPage({ token }: Props) {
           </h1>
           <p>Sanal pos tanımlarını görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading || saving}>
           <Plus size={18} />
           Yeni Sanal Pos
         </button>
@@ -167,67 +201,60 @@ export default function VirtualPosListPage({ token }: Props) {
         (JSON veya serbest metin).
       </p>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <label className="bin-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Sanal pos veya banka ara…"
-              aria-label="Sanal pos ara"
-            />
-          </label>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th>Sanal Pos</th>
-                  <th>Banka</th>
-                  <th>Durum</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{str(row, "name")}</td>
-                    <td>{str(row, "bank")}</td>
-                    <td>
-                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
-                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active !== false ? "Aktif" : "Pasif"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="bin-actions">
-                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          onClick={() => setDeleteId(row.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz sanal pos yok"}</strong>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={rows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-virtual-pos"
+        searchPlaceholder="Sanal pos veya banka ara…"
+        loading={loading}
+        emptyTitle="Henüz sanal pos yok"
+        emptyHint="İlk sanal pos kaydını ekleyin veya Excel'den içe aktarın."
+        exportFileName="sanal-poslar"
+        excelImport={{
+          title: "Sanal pos Excel içe aktar",
+          templateFileName: "sanal-poslar-sablon.xlsx",
+          columns: [
+            { key: "name", label: "Sanal Pos", aliases: ["ad"], required: true },
+            { key: "bank", label: "Banka", aliases: ["banka adı"], required: true },
+            { key: "variables", label: "Değişkenler", aliases: ["json"] },
+          ],
+          validateRow: (cells) => {
+            if (!cells.name.trim()) return "Sanal pos adı gerekli";
+            if (!cells.bank.trim()) return "Banka gerekli";
+            return null;
+          },
+          mapRow: (cells, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            active: true,
+            data: {
+              name: cells.name.trim(),
+              bank: cells.bank.trim(),
+              variables: cells.variables.trim(),
+            },
+          }),
+          onConfirm: async (imported) => {
+            const existing = new Set(
+              rows.map((r) => `${str(r, "name")}|${str(r, "bank")}`.toLocaleLowerCase("tr-TR")),
+            );
+            const fresh = imported.filter(
+              (r) =>
+                !existing.has(`${str(r, "name")}|${str(r, "bank")}`.toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni kayıt yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

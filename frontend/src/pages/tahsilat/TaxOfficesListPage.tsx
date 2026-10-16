@@ -1,8 +1,9 @@
 import gsap from "gsap";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Building2, Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Building2, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = { name: string; code: string; city: string; district: string; active: boolean };
@@ -16,8 +17,16 @@ function rowCity(row: TahsilatAdminRow) {
 
 /** Vergi Daireleri — MySQL (AnyPay: name / city / district) */
 export default function TaxOfficesListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "tax-offices");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "tax-offices");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -50,16 +59,6 @@ export default function TaxOfficesListPage({ token }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) =>
-      `${str(r, "name")} ${rowCity(r)} ${str(r, "district")} ${str(r, "code")}`
-        .toLocaleLowerCase("tr-TR")
-        .includes(q),
-    );
-  }, [rows, query]);
 
   function openCreate() {
     setEditId(null);
@@ -122,12 +121,48 @@ export default function TaxOfficesListPage({ token }: Props) {
         data: { name, code, city, district, province: city },
       });
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "name", label: "Vergi Dairesi", accessor: (r) => str(r, "name") },
+    { id: "city", label: "İl", accessor: (r) => rowCity(r) || "—" },
+    { id: "district", label: "İlçe", accessor: (r) => str(r, "district") || "—" },
+    {
+      id: "status",
+      label: "Durum",
+      accessor: (r) => (r.active !== false ? "Aktif" : "Pasif"),
+      render: (row) => (
+        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+          {row.active !== false ? "Aktif" : "Pasif"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className="bin-icon-btn danger" onClick={() => setDeleteId(row.id)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     if (!deleteId) return;
@@ -163,69 +198,64 @@ export default function TaxOfficesListPage({ token }: Props) {
         </button>
       </div>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <label className="bin-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Vergi dairesi, il veya ilçe ara…"
-              aria-label="Vergi dairesi ara"
-            />
-          </label>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th>Vergi Dairesi</th>
-                  <th>İl</th>
-                  <th>İlçe</th>
-                  <th>Durum</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{str(row, "name")}</td>
-                    <td>{rowCity(row) || "—"}</td>
-                    <td>{str(row, "district") || "—"}</td>
-                    <td>
-                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
-                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active !== false ? "Aktif" : "Pasif"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="bin-actions">
-                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          onClick={() => setDeleteId(row.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz vergi dairesi yok"}</strong>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={rows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-tax-offices"
+        searchPlaceholder="Vergi dairesi, il veya ilçe ara…"
+        loading={loading}
+        emptyTitle="Henüz vergi dairesi yok"
+        emptyHint="İlk kaydı ekleyin veya Excel'den içe aktarın."
+        exportFileName="vergi-daireleri"
+        excelImport={{
+          title: "Vergi dairesi Excel içe aktar",
+          templateFileName: "vergi-daireleri-sablon.xlsx",
+          columns: [
+            { key: "name", label: "Vergi Dairesi", required: true },
+            { key: "city", label: "İl", aliases: ["il", "province"], required: true },
+            { key: "district", label: "İlçe", required: true },
+            { key: "code", label: "Kod" },
+          ],
+          validateRow: (cells) => {
+            if (!cells.name.trim()) return "Vergi dairesi adı gerekli";
+            if (!cells.city.trim()) return "İl gerekli";
+            if (!cells.district.trim()) return "İlçe gerekli";
+            return null;
+          },
+          mapRow: (cells, index) => {
+            const city = cells.city.trim();
+            return {
+              id: `import-${Date.now()}-${index}`,
+              active: true,
+              data: {
+                name: cells.name.trim(),
+                code: cells.code.trim(),
+                city,
+                district: cells.district.trim(),
+                province: city,
+              },
+            };
+          },
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "name").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "name").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni kayıt yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

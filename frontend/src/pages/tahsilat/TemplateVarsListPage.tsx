@@ -1,6 +1,6 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Braces, Check, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Braces, Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow } from "./tahsilatApi";
 import {
   channelLabel,
@@ -8,6 +8,7 @@ import {
   type TemplateChannel,
 } from "./templateVarsStore";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = {
@@ -32,8 +33,16 @@ function varsOf(row: TahsilatAdminRow): string[] {
 
 /** Sistem → Şablon Değişkenleri — MySQL */
 export default function TemplateVarsListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "template-vars");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "template-vars");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -69,22 +78,15 @@ export default function TemplateVarsListPage({ token }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [anyModal]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    return rows
-      .filter((r) => {
-        if (!q) return true;
-        const tip = channelLabel((str(r, "type") as TemplateChannel) || "email");
-        return `${str(r, "name")} ${tip} ${str(r, "variables")}`
-          .toLocaleLowerCase("tr-TR")
-          .includes(q);
-      })
-      .sort((a, b) => {
+  const tableRows = useMemo(
+    () =>
+      rows.slice().sort((a, b) => {
         const n = str(a, "name").localeCompare(str(b, "name"), "tr");
         if (n !== 0) return n;
         return str(a, "type").localeCompare(str(b, "type"));
-      });
-  }, [rows, query]);
+      }),
+    [rows],
+  );
 
   function openCreate() {
     setEditId(null);
@@ -148,12 +150,69 @@ export default function TemplateVarsListPage({ token }: Props) {
         },
       });
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "name", label: "Ad", accessor: (r) => str(r, "name") },
+    {
+      id: "type",
+      label: "Tip",
+      accessor: (r) => channelLabel((str(r, "type") as TemplateChannel) || "email"),
+      render: (row) => {
+        const type = (str(row, "type") as TemplateChannel) || "email";
+        return <span className={`tpl-type ${type}`}>{channelLabel(type)}</span>;
+      },
+    },
+    {
+      id: "variables",
+      label: "Değişkenler",
+      accessor: (r) => varsOf(r).join(", "),
+      render: (row) => (
+        <div className="tpl-vars">
+          {varsOf(row).map((v) => (
+            <code key={v} className="tpl-var">
+              {`{{${v}}}`}
+            </code>
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: "status",
+      label: "Durum",
+      accessor: (r) => (r.active !== false ? "Aktif" : "Pasif"),
+      render: (row) => (
+        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+          {row.active !== false ? "Aktif" : "Pasif"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className="bin-icon-btn danger" onClick={() => setDeleteId(row.id)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     if (!deleteId) return;
@@ -189,87 +248,64 @@ export default function TemplateVarsListPage({ token }: Props) {
         </button>
       </div>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <div className="bin-toolbar-left">
-            <label className="bin-search">
-              <Search size={16} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Grup veya değişken ara…"
-                aria-label="Ara"
-              />
-            </label>
-          </div>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table tpl-table">
-              <thead>
-                <tr>
-                  <th>Ad</th>
-                  <th>Tip</th>
-                  <th>Değişkenler</th>
-                  <th>Durum</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => {
-                  const type = (str(row, "type") as TemplateChannel) || "email";
-                  const variables = varsOf(row);
-                  return (
-                    <tr key={row.id}>
-                      <td>{str(row, "name")}</td>
-                      <td>
-                        <span className={`tpl-type ${type}`}>{channelLabel(type)}</span>
-                      </td>
-                      <td>
-                        <div className="tpl-vars">
-                          {variables.map((v) => (
-                            <code key={v} className="tpl-var">
-                              {`{{${v}}}`}
-                            </code>
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
-                          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
-                          {row.active !== false ? "Aktif" : "Pasif"}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="bin-actions">
-                          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="bin-icon-btn danger"
-                            onClick={() => setDeleteId(row.id)}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>
-                {loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz değişken grubu yok"}
-              </strong>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={tableRows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-template-vars"
+        searchPlaceholder="Grup veya değişken ara…"
+        loading={loading}
+        emptyTitle="Henüz değişken grubu yok"
+        emptyHint="İlk grubu ekleyin veya Excel'den içe aktarın."
+        exportFileName="sablon-degiskenleri"
+        excelImport={{
+          title: "Şablon değişkeni Excel içe aktar",
+          templateFileName: "sablon-degiskenleri-sablon.xlsx",
+          columns: [
+            { key: "name", label: "Ad", required: true },
+            { key: "type", label: "Tip", aliases: ["kanal"], required: true },
+            { key: "variables", label: "Değişkenler", aliases: ["variables"], required: true },
+          ],
+          validateRow: (cells) => {
+            if (!cells.name.trim()) return "Ad gerekli";
+            const type = cells.type.trim().toLowerCase();
+            if (type !== "email" && type !== "sms") return "Tip email veya sms olmalı";
+            if (!parseVariableKeys(cells.variables).length) return "En az bir değişken girin";
+            return null;
+          },
+          mapRow: (cells, index) => {
+            const type = cells.type.trim().toLowerCase() as TemplateChannel;
+            const variables = parseVariableKeys(cells.variables);
+            return {
+              id: `import-${Date.now()}-${index}`,
+              active: true,
+              data: { name: cells.name.trim(), type, variables: variables.join(",") },
+            };
+          },
+          onConfirm: async (imported) => {
+            const existing = new Set(
+              rows.map((r) =>
+                `${str(r, "type")}|${str(r, "name")}`.toLocaleLowerCase("tr-TR"),
+              ),
+            );
+            const fresh = imported.filter(
+              (r) =>
+                !existing.has(`${str(r, "type")}|${str(r, "name")}`.toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni kayıt yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

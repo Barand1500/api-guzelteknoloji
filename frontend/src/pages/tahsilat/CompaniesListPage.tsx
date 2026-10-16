@@ -14,13 +14,13 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Search,
   Trash2,
   X,
 } from "lucide-react";
 import { issueCompanyApiKey, type TahsilatAdminRow } from "./tahsilatApi";
 import { licenseBadge } from "./companiesStore";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = {
@@ -79,8 +79,18 @@ type Props = { token: string };
 
 /** Firmalar — MySQL (+ firma API Key → AnyPay) */
 export default function CompaniesListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow, setRows, reload } = useTahsilatDb(token, "companies");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    setRows,
+    reload,
+    persistBulk,
+  } = useTahsilatDb(token, "companies");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -147,17 +157,10 @@ export default function CompaniesListPage({ token }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [anyModal]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    return rows
-      .filter((r) => {
-        if (!q) return true;
-        return `${str(r, "name")} ${str(r, "domain")} ${str(r, "dbName")}`
-          .toLocaleLowerCase("tr-TR")
-          .includes(q);
-      })
-      .sort((a, b) => str(a, "name").localeCompare(str(b, "name"), "tr"));
-  }, [rows, query]);
+  const tableRows = useMemo(
+    () => rows.slice().sort((a, b) => str(a, "name").localeCompare(str(b, "name"), "tr")),
+    [rows],
+  );
 
   function openCreate() {
     setEditId(null);
@@ -237,12 +240,97 @@ export default function CompaniesListPage({ token }: Props) {
         },
       });
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "name", label: "Firma Adı", accessor: (r) => str(r, "name") },
+    { id: "domain", label: "Domain", mono: true, accessor: (r) => str(r, "domain") },
+    {
+      id: "apiKey",
+      label: "API Key",
+      filterable: false,
+      accessor: (r) => str(r, "apiKey"),
+      render: (row) => {
+        const apiKey = str(row, "apiKey");
+        if (apiKey) {
+          return (
+            <div className="firm-key-cell">
+              <code className="firm-key-code" title={apiKey}>
+                {apiKey.slice(0, 12)}…
+              </code>
+              <button
+                type="button"
+                className="bin-icon-btn"
+                title="Kopyala"
+                aria-label="API Key kopyala"
+                onClick={() => void copyKey(apiKey, row.id)}
+              >
+                {copiedId === row.id ? <Check size={15} /> : <Copy size={15} />}
+              </button>
+            </div>
+          );
+        }
+        return (
+          <button
+            type="button"
+            className="firm-key-create"
+            disabled={keyBusyId === row.id}
+            onClick={() => void onIssueKey(row.id, true)}
+          >
+            <KeyRound size={14} />
+            Anahtar oluştur
+          </button>
+        );
+      },
+    },
+    {
+      id: "license",
+      label: "Lisans",
+      accessor: (r) => licenseBadge(str(r, "licenseEndsAt")).label,
+      render: (row) => {
+        const lic = licenseBadge(str(row, "licenseEndsAt"));
+        return <span className={`firm-lic tone-${lic.tone}`}>{lic.label}</span>;
+      },
+    },
+    {
+      id: "status",
+      label: "Durum",
+      accessor: (r) => (r.active !== false ? "Aktif" : "Pasif"),
+      render: (row) => (
+        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+          {row.active !== false ? "Aktif" : "Pasif"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button type="button" className="bin-icon-btn success" onClick={() => openEdit(row)}>
+            <List size={16} />
+          </button>
+          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className="bin-icon-btn danger" onClick={() => setDeleteId(row.id)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     if (!deleteId) return;
@@ -283,113 +371,72 @@ export default function CompaniesListPage({ token }: Props) {
         kopyalayın. Yol: <code>https://api.guzelteknoloji.com/v1/tahsilat</code>
       </p>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <div className="bin-toolbar-left">
-            <label className="bin-search">
-              <Search size={16} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Firma veya domain ara…"
-                aria-label="Firma ara"
-              />
-            </label>
-          </div>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th>Firma Adı</th>
-                  <th>Domain</th>
-                  <th>API Key</th>
-                  <th>Lisans</th>
-                  <th>Durum</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => {
-                  const lic = licenseBadge(str(row, "licenseEndsAt"));
-                  const apiKey = str(row, "apiKey");
-                  return (
-                    <tr key={row.id}>
-                      <td>{str(row, "name")}</td>
-                      <td>{str(row, "domain")}</td>
-                      <td>
-                        {apiKey ? (
-                          <div className="firm-key-cell">
-                            <code className="firm-key-code" title={apiKey}>
-                              {apiKey.slice(0, 12)}…
-                            </code>
-                            <button
-                              type="button"
-                              className="bin-icon-btn"
-                              title="Kopyala"
-                              aria-label="API Key kopyala"
-                              onClick={() => void copyKey(apiKey, row.id)}
-                            >
-                              {copiedId === row.id ? <Check size={15} /> : <Copy size={15} />}
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="firm-key-create"
-                            disabled={keyBusyId === row.id}
-                            onClick={() => void onIssueKey(row.id, true)}
-                          >
-                            <KeyRound size={14} />
-                            Anahtar oluştur
-                          </button>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`firm-lic tone-${lic.tone}`}>{lic.label}</span>
-                      </td>
-                      <td>
-                        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
-                          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
-                          {row.active !== false ? "Aktif" : "Pasif"}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="bin-actions">
-                          <button
-                            type="button"
-                            className="bin-icon-btn success"
-                            onClick={() => openEdit(row)}
-                          >
-                            <List size={16} />
-                          </button>
-                          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
-                            <Pencil size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="bin-icon-btn danger"
-                            onClick={() => setDeleteId(row.id)}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz firma yok"}</strong>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={tableRows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-companies"
+        searchPlaceholder="Firma veya domain ara…"
+        loading={loading}
+        emptyTitle="Henüz firma yok"
+        emptyHint="Yeni Firma ile ekleyin. Excel yalnızca ad, domain ve lisans tarihi içerir (DB bilgisi yok)."
+        exportFileName="firmalar"
+        excelImport={{
+          title: "Firma Excel içe aktar (güvenli alanlar)",
+          templateFileName: "firmalar-sablon.xlsx",
+          columns: [
+            { key: "name", label: "Firma Adı", required: true },
+            { key: "domain", label: "Domain", required: true },
+            { key: "licenseEndsAt", label: "Lisans Bitiş", aliases: ["lisans", "license"] },
+          ],
+          validateRow: (cells) => {
+            if (!cells.name.trim()) return "Firma adı gerekli";
+            if (!cells.domain.trim()) return "Domain gerekli";
+            return null;
+          },
+          mapRow: (cells, index) => {
+            const domain = cells.domain.trim().toLocaleLowerCase("tr-TR");
+            const licenseRaw = cells.licenseEndsAt.trim();
+            const licenseEndsAt = licenseRaw
+              ? new Date(`${licenseRaw.slice(0, 10)}T23:59:59`).toISOString()
+              : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+            return {
+              id: `import-${Date.now()}-${index}`,
+              active: true,
+              data: {
+                name: cells.name.trim(),
+                domain,
+                domainActive: "1",
+                dbActive: "1",
+                dbHost: "",
+                dbPort: "3306",
+                dbName: "",
+                dbUser: "",
+                dbPassword: "",
+                frontendPath: "",
+                licenseEndsAt,
+              },
+            };
+          },
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "domain").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "domain").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni firma yok (domain zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

@@ -1,8 +1,9 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, MapPin, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Check, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = { name: string; plateCode: string; active: boolean };
@@ -12,8 +13,16 @@ type Props = { token: string };
 
 /** İller — MySQL /v1/tahsilat/provinces */
 export default function ProvincesListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "provinces");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "provinces");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -47,15 +56,10 @@ export default function ProvincesListPage({ token }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    return rows
-      .filter((r) => {
-        if (!q) return true;
-        return `${str(r, "name")} ${str(r, "plateCode")}`.toLocaleLowerCase("tr-TR").includes(q);
-      })
-      .sort((a, b) => str(a, "name").localeCompare(str(b, "name"), "tr"));
-  }, [rows, query]);
+  const tableRows = useMemo(
+    () => rows.slice().sort((a, b) => str(a, "name").localeCompare(str(b, "name"), "tr")),
+    [rows],
+  );
 
   function openCreate() {
     setEditId(null);
@@ -92,12 +96,47 @@ export default function ProvincesListPage({ token }: Props) {
     try {
       await saveRow(nextRow);
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "name", label: "İl Adı", accessor: (r) => str(r, "name") },
+    { id: "plateCode", label: "Plaka", mono: true, accessor: (r) => str(r, "plateCode") || "—" },
+    {
+      id: "status",
+      label: "Durum",
+      accessor: (r) => (r.active !== false ? "Aktif" : "Pasif"),
+      render: (row) => (
+        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+          {row.active !== false ? "Aktif" : "Pasif"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className="bin-icon-btn danger" onClick={() => setDeleteId(row.id)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     if (!deleteId) return;
@@ -137,66 +176,48 @@ export default function ProvincesListPage({ token }: Props) {
         MySQL — AnyPay <code>/v1/tahsilat/provinces</code>
       </p>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <label className="bin-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="İl veya plaka ara…"
-              aria-label="İl ara"
-            />
-          </label>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th>İl Adı</th>
-                  <th>Plaka</th>
-                  <th>Durum</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{str(row, "name")}</td>
-                    <td>{str(row, "plateCode") || "—"}</td>
-                    <td>
-                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
-                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active !== false ? "Aktif" : "Pasif"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="bin-actions">
-                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          onClick={() => setDeleteId(row.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen yok" : "Henüz il yok"}</strong>
-            </div>
-          )}
-        </div>
-      </section>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
+
+      <TahsilatDataTable
+        rows={tableRows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-provinces"
+        searchPlaceholder="İl veya plaka ara…"
+        loading={loading}
+        emptyTitle="Henüz il yok"
+        emptyHint="İlk ili ekleyin veya Excel'den içe aktarın."
+        exportFileName="iller"
+        excelImport={{
+          title: "İl Excel içe aktar",
+          templateFileName: "iller-sablon.xlsx",
+          columns: [
+            { key: "name", label: "İl Adı", aliases: ["il"], required: true },
+            { key: "plateCode", label: "Plaka", aliases: ["plaka kodu"] },
+          ],
+          validateRow: (cells) => (!cells.name.trim() ? "İl adı gerekli" : null),
+          mapRow: (cells, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            active: true,
+            data: { name: cells.name.trim(), plateCode: cells.plateCode.replace(/\D/g, "").slice(0, 2) },
+          }),
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "name").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "name").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni il yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

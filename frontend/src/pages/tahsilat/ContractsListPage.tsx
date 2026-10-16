@@ -1,8 +1,9 @@
 import gsap from "gsap";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, FileText, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Check, FileText, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = { name: string; active: boolean };
@@ -12,8 +13,16 @@ type Props = { token: string };
 
 /** Sözleşmeler — MySQL */
 export default function ContractsListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "contracts");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "contracts");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -46,12 +55,6 @@ export default function ContractsListPage({ token }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) => str(r, "name").toLocaleLowerCase("tr-TR").includes(q));
-  }, [rows, query]);
 
   function openCreate() {
     setEditId(null);
@@ -96,12 +99,46 @@ export default function ContractsListPage({ token }: Props) {
         data: { name },
       });
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "name", label: "Sözleşme Adı", accessor: (r) => str(r, "name") },
+    {
+      id: "status",
+      label: "Durum",
+      accessor: (r) => (r.active !== false ? "Aktif" : "Pasif"),
+      render: (row) => (
+        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+          {row.active !== false ? "Aktif" : "Pasif"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
+            <Pencil size={16} />
+          </button>
+          <button type="button" className="bin-icon-btn danger" onClick={() => setDeleteId(row.id)}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     if (!deleteId) return;
@@ -137,65 +174,45 @@ export default function ContractsListPage({ token }: Props) {
         </button>
       </div>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <label className="bin-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Sözleşme adı ara…"
-              aria-label="Sözleşme ara"
-            />
-          </label>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th>Sözleşme Adı</th>
-                  <th>Durum</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{str(row, "name")}</td>
-                    <td>
-                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
-                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active !== false ? "Aktif" : "Pasif"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="bin-actions">
-                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          onClick={() => setDeleteId(row.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>{loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz sözleşme yok"}</strong>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={rows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-contracts"
+        searchPlaceholder="Sözleşme adı ara…"
+        loading={loading}
+        emptyTitle="Henüz sözleşme yok"
+        emptyHint="İlk sözleşmeyi ekleyin veya Excel'den içe aktarın."
+        exportFileName="sozlesmeler"
+        excelImport={{
+          title: "Sözleşme Excel içe aktar",
+          templateFileName: "sozlesmeler-sablon.xlsx",
+          columns: [{ key: "name", label: "Sözleşme Adı", aliases: ["ad"], required: true }],
+          validateRow: (cells) => (!cells.name.trim() ? "Sözleşme adı gerekli" : null),
+          mapRow: (cells, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            active: true,
+            data: { name: cells.name.trim() },
+          }),
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "name").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "name").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni sözleşme yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

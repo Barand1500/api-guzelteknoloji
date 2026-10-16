@@ -1,13 +1,15 @@
 import gsap from "gsap";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow, TahsilatResource } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type Props = {
   token: string;
   resource: TahsilatResource;
+  storageKey: string;
   eyebrow: string;
   title: string;
   subtitle: string;
@@ -18,12 +20,15 @@ type Props = {
   modalEditTitle: string;
   modalHint: string;
   fieldLabel: string;
+  searchPlaceholder?: string;
+  exportFileName?: string;
 };
 
 /** Kart tipi / tür / marka — MySQL */
 export default function NamedMetaListPage({
   token,
   resource,
+  storageKey,
   eyebrow,
   title,
   subtitle,
@@ -34,9 +39,19 @@ export default function NamedMetaListPage({
   modalEditTitle,
   modalHint,
   fieldLabel,
+  searchPlaceholder,
+  exportFileName,
 }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, resource);
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, resource);
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -69,12 +84,6 @@ export default function NamedMetaListPage({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) => str(r, "name").toLocaleLowerCase("tr-TR").includes(q));
-  }, [rows, query]);
 
   function openCreate() {
     setEditId(null);
@@ -120,6 +129,7 @@ export default function NamedMetaListPage({
     try {
       await saveRow(nextRow);
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
@@ -140,6 +150,42 @@ export default function NamedMetaListPage({
     }
   }
 
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "name", label: columnLabel, accessor: (r) => str(r, "name") },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button
+            type="button"
+            className="bin-icon-btn"
+            title="Düzenle"
+            aria-label="Düzenle"
+            onClick={() => openEdit(row)}
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            className="bin-icon-btn danger"
+            title="Sil"
+            aria-label="Sil"
+            onClick={() => setDeleteId(row.id)}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  const exportBase = exportFileName || resource;
+
   return (
     <div className="bin-page">
       <div className="bin-page-head">
@@ -151,7 +197,7 @@ export default function NamedMetaListPage({
           </h1>
           <p>{subtitle}</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading || saving}>
           <Plus size={18} />
           {addLabel}
         </button>
@@ -160,70 +206,48 @@ export default function NamedMetaListPage({
       <p className="bin-hint">
         Merkez DB — AnyPay anahtar açıkken <code>/v1/tahsilat/{resource}</code> ile çeker.
       </p>
+      {loading ? <p className="bin-hint">Yükleniyor…</p> : null}
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <label className="bin-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`${columnLabel} ara…`}
-              aria-label={`${columnLabel} ara`}
-            />
-          </label>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
-
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th>{columnLabel}</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{str(row, "name")}</td>
-                    <td>
-                      <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
-                          onClick={() => setDeleteId(row.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>
-                {loading ? "Yükleniyor…" : query ? "Eşleşen kayıt yok" : "Henüz kayıt yok"}
-              </strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk kaydı ekleyin."}</span>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={rows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey={storageKey}
+        searchPlaceholder={searchPlaceholder || `${columnLabel} ara…`}
+        loading={loading}
+        emptyTitle="Henüz kayıt yok"
+        emptyHint="İlk kaydı ekleyin veya Excel'den içe aktarın."
+        exportFileName={exportBase}
+        excelImport={{
+          title: `${columnLabel} Excel içe aktar`,
+          templateFileName: `${exportBase}-sablon.xlsx`,
+          columns: [
+            { key: "name", label: fieldLabel, aliases: ["ad", "isim", columnLabel.toLowerCase()], required: true },
+          ],
+          validateRow: (cells) => (!cells.name.trim() ? `${fieldLabel} gerekli` : null),
+          mapRow: (cells, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            active: true,
+            data: { name: cells.name.trim() },
+          }),
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "name").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "name").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni kayıt yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

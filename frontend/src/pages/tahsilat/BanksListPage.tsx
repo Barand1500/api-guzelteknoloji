@@ -1,8 +1,9 @@
 import gsap from "gsap";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Building2, ImagePlus, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Building2, ImagePlus, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow } from "./tahsilatApi";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = {
@@ -29,8 +30,16 @@ type Props = { token: string };
 
 /** Bankalar — MySQL; BIN seçimi + AnyPay /v1/tahsilat/banks */
 export default function BanksListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "banks");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "banks");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -64,14 +73,6 @@ export default function BanksListPage({ token }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [modalOpen, deleteId]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    if (!q) return rows;
-    return rows.filter((r) =>
-      `${str(r, "name")} ${str(r, "shortName")}`.toLocaleLowerCase("tr-TR").includes(q),
-    );
-  }, [rows, query]);
 
   function openCreate() {
     setEditId(null);
@@ -155,12 +156,63 @@ export default function BanksListPage({ token }: Props) {
     try {
       await saveRow(nextRow);
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    {
+      id: "logo",
+      label: "Logo",
+      filterable: false,
+      accessor: () => "",
+      render: (row) => (
+        <span className="bank-logo-cell">
+          {str(row, "logo") ? (
+            <img src={str(row, "logo")} alt="" />
+          ) : (
+            <Building2 size={18} strokeWidth={1.7} />
+          )}
+        </span>
+      ),
+    },
+    { id: "name", label: "Banka Adı", accessor: (r) => str(r, "name") },
+    { id: "shortName", label: "Kısa Ad", accessor: (r) => str(r, "shortName") || "—" },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button
+            type="button"
+            className="bin-icon-btn"
+            title="Düzenle"
+            aria-label="Düzenle"
+            onClick={() => openEdit(row)}
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            className="bin-icon-btn danger"
+            title="Sil"
+            aria-label="Sil"
+            onClick={() => setDeleteId(row.id)}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     if (!deleteId) return;
@@ -190,7 +242,7 @@ export default function BanksListPage({ token }: Props) {
           </h1>
           <p>Tanımlı bankaları görüntüleyin ve yönetin (merkez DB)</p>
         </div>
-        <button type="button" className="bin-add" onClick={openCreate} disabled={loading}>
+        <button type="button" className="bin-add" onClick={openCreate} disabled={loading || saving}>
           <Plus size={18} />
           Yeni Banka
         </button>
@@ -200,79 +252,58 @@ export default function BanksListPage({ token }: Props) {
         MySQL — AnyPay <code>/v1/tahsilat/banks</code>; BIN formundaki Banka seçimi buradan.
       </p>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <label className="bin-search">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Banka adı veya kısa ad ara…"
-              aria-label="Banka ara"
-            />
-          </label>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 72 }}>Logo</th>
-                  <th>Banka Adı</th>
-                  <th>Kısa Ad</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <span className="bank-logo-cell">
-                        {str(row, "logo") ? (
-                          <img src={str(row, "logo")} alt="" />
-                        ) : (
-                          <Building2 size={18} strokeWidth={1.7} />
-                        )}
-                      </span>
-                    </td>
-                    <td>{str(row, "name")}</td>
-                    <td>{str(row, "shortName") || "—"}</td>
-                    <td>
-                      <div className="bin-actions">
-                        <button
-                          type="button"
-                          className="bin-icon-btn"
-                          title="Düzenle"
-                          aria-label="Düzenle"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          title="Sil"
-                          aria-label="Sil"
-                          onClick={() => setDeleteId(row.id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>{query ? "Eşleşen banka yok" : "Henüz banka yok"}</strong>
-              <span>{query ? "Aramayı değiştirin." : "İlk bankayı ekleyin."}</span>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={rows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-banks"
+        searchPlaceholder="Banka adı veya kısa ad ara…"
+        loading={loading}
+        emptyTitle="Henüz banka yok"
+        emptyHint="İlk bankayı ekleyin veya Excel'den içe aktarın."
+        exportFileName="bankalar"
+        excelImport={{
+          title: "Banka Excel içe aktar",
+          templateFileName: "bankalar-sablon.xlsx",
+          columns: [
+            { key: "name", label: "Banka Adı", aliases: ["banka", "ad"], required: true },
+            { key: "shortName", label: "Kısa Ad", aliases: ["kısa ad"] },
+            { key: "gateway3dsUrl", label: "3DS Gateway URL", aliases: ["3ds"] },
+            { key: "apiUrl", label: "API URL" },
+            { key: "xmlUrl", label: "XML Servis URL", aliases: ["xml"] },
+          ],
+          validateRow: (cells) => (!cells.name.trim() ? "Banka adı gerekli" : null),
+          mapRow: (cells, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            active: true,
+            data: {
+              name: cells.name.trim(),
+              shortName: cells.shortName.trim(),
+              logo: "",
+              gateway3dsUrl: cells.gateway3dsUrl.trim(),
+              apiUrl: cells.apiUrl.trim(),
+              xmlUrl: cells.xmlUrl.trim(),
+            },
+          }),
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "name").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "name").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni banka yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">

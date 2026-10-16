@@ -8,6 +8,8 @@ export default function CardTypesListPage({ token }: Props) {
     <NamedMetaListPage
       token={token}
       resource="card-types"
+      storageKey="tahsilat-card-types"
+      exportFileName="kart-tipleri"
       eyebrow="KART YÖNETİMİ"
       title="Kart Tipleri"
       subtitle="Kart tiplerini görüntüleyin ve yönetin"

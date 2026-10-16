@@ -1,9 +1,10 @@
 import gsap from "gsap";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Pencil, Plus, Puzzle, Search, Trash2, X } from "lucide-react";
+import { Check, Pencil, Plus, Puzzle, Trash2, X } from "lucide-react";
 import type { TahsilatAdminRow } from "./tahsilatApi";
 import { slugifyCode } from "./modulesStore";
 import { str, useTahsilatDb } from "./useTahsilatDb";
+import { TahsilatDataTable, type TahsilatTableColumn } from "./widgets/TahsilatDataTable";
 import "./binList.css";
 
 type FormState = {
@@ -35,8 +36,16 @@ function parentNameOf(row: TahsilatAdminRow, rows: TahsilatAdminRow[]) {
 
 /** Sistem → Modüller — MySQL */
 export default function ModulesListPage({ token }: Props) {
-  const { rows, loading, saveRow, removeRow } = useTahsilatDb(token, "modules");
-  const [query, setQuery] = useState("");
+  const {
+    rows,
+    loading,
+    saving,
+    error: dbError,
+    setError: setDbError,
+    saveRow,
+    removeRow,
+    persistBulk,
+  } = useTahsilatDb(token, "modules");
   const [filterParentId, setFilterParentId] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -90,29 +99,23 @@ export default function ModulesListPage({ token }: Props) {
       .sort((a, b) => str(a, "name").localeCompare(str(b, "name"), "tr"));
   }, [rows]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("tr-TR");
-    return rows
-      .filter((r) => {
-        const parentId = str(r, "parentId");
-        if (!filterParentId) return true;
-        if (filterParentId === "__root__") return !parentId;
-        return parentId === filterParentId;
-      })
-      .filter((r) => {
-        if (!q) return true;
-        const parent = parentNameOf(r, rows);
-        return `${str(r, "name")} ${str(r, "code")} ${str(r, "icon")} ${parent}`
-          .toLocaleLowerCase("tr-TR")
-          .includes(q);
-      })
-      .sort((a, b) => {
-        const ao = Number(a.data.sortOrder) || 0;
-        const bo = Number(b.data.sortOrder) || 0;
-        if (ao !== bo) return ao - bo;
-        return str(a, "name").localeCompare(str(b, "name"), "tr");
-      });
-  }, [rows, query, filterParentId]);
+  const tableRows = useMemo(
+    () =>
+      rows
+        .filter((r) => {
+          const parentId = str(r, "parentId");
+          if (!filterParentId) return true;
+          if (filterParentId === "__root__") return !parentId;
+          return parentId === filterParentId;
+        })
+        .sort((a, b) => {
+          const ao = Number(a.data.sortOrder) || 0;
+          const bo = Number(b.data.sortOrder) || 0;
+          if (ao !== bo) return ao - bo;
+          return str(a, "name").localeCompare(str(b, "name"), "tr");
+        }),
+    [rows, filterParentId],
+  );
 
   function openCreate() {
     setEditId(null);
@@ -202,12 +205,57 @@ export default function ModulesListPage({ token }: Props) {
         },
       });
       closeModal();
+      setDbError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kayıt veritabanına yazılamadı.");
     } finally {
       setBusy(false);
     }
   }
+
+  const tableColumns: TahsilatTableColumn<TahsilatAdminRow>[] = [
+    { id: "parent", label: "Üst Modül", accessor: (r) => parentNameOf(r, rows) || "—" },
+    { id: "name", label: "Ad", accessor: (r) => str(r, "name") },
+    { id: "code", label: "Kod", mono: true, accessor: (r) => str(r, "code") },
+    { id: "icon", label: "İkon", accessor: (r) => str(r, "icon") || "—" },
+    { id: "sortOrder", label: "Sıra", accessor: (r) => String(Number(r.data.sortOrder) || 0) },
+    {
+      id: "status",
+      label: "Durum",
+      accessor: (r) => (r.active !== false ? "Aktif" : "Pasif"),
+      render: (row) => (
+        <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
+          {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
+          {row.active !== false ? "Aktif" : "Pasif"}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      label: "İşlemler",
+      hideable: false,
+      filterable: false,
+      align: "right",
+      accessor: () => "",
+      render: (row) => (
+        <div className="bin-actions">
+          <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            className="bin-icon-btn danger"
+            onClick={() => {
+              setError("");
+              setDeleteId(row.id);
+            }}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ),
+    },
+  ];
 
   async function confirmDelete() {
     if (!deleteId) return;
@@ -249,96 +297,77 @@ export default function ModulesListPage({ token }: Props) {
         </button>
       </div>
 
-      <section className="bin-panel">
-        <div className="bin-toolbar">
-          <div className="bin-toolbar-left">
-            <label className="bin-search">
-              <Search size={16} />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Modül ara…"
-                aria-label="Modül ara"
-              />
-            </label>
-            <select
-              className="bin-filter-select"
-              value={filterParentId}
-              onChange={(e) => setFilterParentId(e.target.value)}
-              aria-label="Üst modüle göre filtrele"
-            >
-              <option value="">Üst Modüle Göre Filtrele</option>
-              <option value="__root__">Üst seviye (üst yok)</option>
-              {filterParents.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {str(p, "name")}
-                </option>
-              ))}
-            </select>
-          </div>
-          <span className="bin-count">{filtered.length} kayıt</span>
-        </div>
+      {dbError ? (
+        <p className="bin-hint" style={{ color: "#be123c" }} role="alert">
+          {dbError}
+        </p>
+      ) : null}
 
-        <div className="bin-table-wrap">
-          {filtered.length ? (
-            <table className="bin-table">
-              <thead>
-                <tr>
-                  <th>Üst Modül</th>
-                  <th>Ad</th>
-                  <th>Kod</th>
-                  <th>İkon</th>
-                  <th>Sıra</th>
-                  <th>Durum</th>
-                  <th style={{ textAlign: "right" }}>İşlemler</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => (
-                  <tr key={row.id}>
-                    <td>{parentNameOf(row, rows) || "—"}</td>
-                    <td>{str(row, "name")}</td>
-                    <td>
-                      <code className="bin-code">{str(row, "code")}</code>
-                    </td>
-                    <td>{str(row, "icon") || "—"}</td>
-                    <td>{Number(row.data.sortOrder) || 0}</td>
-                    <td>
-                      <span className={`vpos-status ${row.active !== false ? "on" : "off"}`}>
-                        {row.active !== false ? <Check size={14} strokeWidth={2.4} /> : null}
-                        {row.active !== false ? "Aktif" : "Pasif"}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="bin-actions">
-                        <button type="button" className="bin-icon-btn" onClick={() => openEdit(row)}>
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="bin-icon-btn danger"
-                          onClick={() => {
-                            setError("");
-                            setDeleteId(row.id);
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="bin-empty">
-              <strong>
-                {loading ? "Yükleniyor…" : query || filterParentId ? "Eşleşen kayıt yok" : "Henüz modül yok"}
-              </strong>
-            </div>
-          )}
-        </div>
-      </section>
+      <TahsilatDataTable
+        rows={tableRows}
+        columns={tableColumns}
+        getRowId={(r) => r.id}
+        storageKey="tahsilat-modules"
+        searchPlaceholder="Modül ara…"
+        loading={loading}
+        emptyTitle="Henüz modül yok"
+        emptyHint="İlk modülü ekleyin veya Excel'den içe aktarın."
+        exportFileName="moduller"
+        toolbarStart={
+          <select
+            className="bin-filter-select"
+            value={filterParentId}
+            onChange={(e) => setFilterParentId(e.target.value)}
+            aria-label="Üst modüle göre filtrele"
+          >
+            <option value="">Üst Modüle Göre Filtrele</option>
+            <option value="__root__">Üst seviye (üst yok)</option>
+            {filterParents.map((p) => (
+              <option key={p.id} value={p.id}>
+                {str(p, "name")}
+              </option>
+            ))}
+          </select>
+        }
+        excelImport={{
+          title: "Modül Excel içe aktar",
+          templateFileName: "moduller-sablon.xlsx",
+          columns: [
+            { key: "name", label: "Ad", required: true },
+            { key: "code", label: "Kod", required: true },
+            { key: "icon", label: "İkon" },
+            { key: "sortOrder", label: "Sıra", aliases: ["sıra no"] },
+          ],
+          validateRow: (cells) => {
+            if (!cells.name.trim()) return "Ad gerekli";
+            if (!cells.code.trim()) return "Kod gerekli";
+            return null;
+          },
+          mapRow: (cells, index) => ({
+            id: `import-${Date.now()}-${index}`,
+            active: true,
+            data: {
+              name: cells.name.trim(),
+              code: slugifyCode(cells.code.trim() || cells.name),
+              icon: cells.icon.trim(),
+              sortOrder: Number(cells.sortOrder.replace(/\D/g, "")) || 0,
+              parentId: "",
+              parentName: "",
+            },
+          }),
+          onConfirm: async (imported) => {
+            const existing = new Set(rows.map((r) => str(r, "code").toLocaleLowerCase("tr-TR")));
+            const fresh = imported.filter(
+              (r) => !existing.has(str(r, "code").toLocaleLowerCase("tr-TR")),
+            );
+            if (!fresh.length) {
+              throw new Error("İçe aktarılacak yeni modül yok (hepsi zaten kayıtlı).");
+            }
+            await persistBulk(fresh);
+            setDbError("");
+          },
+        }}
+      />
 
       {modalOpen ? (
         <div className="bin-modal-overlay" role="presentation">
