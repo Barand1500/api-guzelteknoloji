@@ -5,10 +5,13 @@
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 8px 24px rgba(28, 43, 64, 0.05);
-  overflow: hidden;
+  /* visible: sütun/filtre popover kesilmesin */
+  overflow: visible;
 }
 
 .tt-toolbar {
+  position: relative;
+  z-index: 30;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -17,6 +20,8 @@
   padding: 10px 14px;
   border-bottom: 1px solid #eef2f7;
   background: #fafbfd;
+  border-radius: 16px 16px 0 0;
+  overflow: visible;
 }
 
 .tt-toolbar-icons {
@@ -87,15 +92,19 @@
 
 .tt-pop {
   position: absolute;
-  z-index: 40;
+  z-index: 50;
   top: calc(100% + 8px);
   right: 0;
   min-width: 260px;
   max-width: min(360px, 92vw);
+  max-height: min(70vh, 420px);
+  display: flex;
+  flex-direction: column;
   border: 1px solid #e2eaf4;
   border-radius: 14px;
   background: #fff;
-  box-shadow: 0 16px 40px rgba(28, 43, 64, 0.14);
+  box-shadow: 0 16px 40px rgba(28, 43, 64, 0.18);
+  overflow: hidden;
 }
 
 .tt-pop-anchor {
@@ -124,7 +133,9 @@
 }
 
 .tt-pop-list {
-  max-height: 240px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
   padding: 4px 8px 8px;
   border-top: 1px solid #eef2f7;
@@ -247,6 +258,9 @@
 
 .tt-table-wrap {
   overflow: auto;
+  border-radius: 0 0 16px 16px;
+  position: relative;
+  z-index: 1;
 }
 
 .tt-table {
