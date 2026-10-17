@@ -224,6 +224,9 @@ export const garantiGateway: PaymentGateway = {
       raw.orderid || raw.orderId || raw.oid || raw.Oid || '';
     const response = (raw.response || raw.Response || '').trim();
     const proc = (raw.procreturncode || raw.ProcReturnCode || '').trim();
+    const acqReturn = (raw.acqreturncode || raw.acqReturnCode || raw.AcqReturnCode || '').trim();
+    const returnCode = (raw.returncode || raw.returnCode || raw.ReturnCode || '').trim();
+    const approvedFlag = (raw.approved || raw.Approved || '').trim().toLowerCase();
     const statusBlob = [
       raw.mderrormessage,
       raw.MdErrorMessage,
@@ -239,8 +242,8 @@ export const garantiGateway: PaymentGateway = {
       .filter(Boolean)
       .join(' ');
 
-    // Klasik: Response=Approved · ProcReturnCode=00/000
-    // Troy metni tek başına yetmez — gerçek çekimde authcode / hostref / retref gelir.
+    // Referans STATUS: Approved | ProcReturnCode 00/000 | TROY Code 000 Success
+    // Troy kartlarda Response boş kalıp sadece mderrormessage içinde TROY Success gelebiliyor.
     const troyMsgOk =
       /TROY\s+Gateway\s+Result/i.test(statusBlob) &&
       /Code:\s*'0{2,3}'/i.test(statusBlob) &&
@@ -248,28 +251,65 @@ export const garantiGateway: PaymentGateway = {
     const authCode = (raw.authcode || raw.AuthCode || '').trim();
     const hostRef = (raw.hostrefnum || raw.HostRefNum || '').trim();
     const retRef = (raw.retrefnum || raw.RetrefNum || '').trim();
-    const hasCaptureProof = Boolean(authCode || hostRef || retRef);
     const md = (raw.mdstatus || raw.mdStatus || raw.MdStatus || '').trim();
     const mdFail = md !== '' && !['1', '2', '3', '4'].includes(md);
     const classicOk =
-      response.toLowerCase() === 'approved' || proc === '00' || proc === '000';
-    const troyOk = troyMsgOk && (classicOk || hasCaptureProof);
+      response.toLowerCase() === 'approved' ||
+      proc === '00' ||
+      proc === '000' ||
+      acqReturn === '00' ||
+      acqReturn === '000' ||
+      returnCode === '00' ||
+      returnCode === '000' ||
+      approvedFlag === 'true' ||
+      approvedFlag === '1' ||
+      approvedFlag === 'yes';
+    const troyOk = troyMsgOk;
+    const challengeOnly =
+      /Challenge\s+authentication\s+via\s+ACS/i.test(statusBlob) &&
+      !classicOk &&
+      !troyOk;
     const basarili = !mdFail && (classicOk || troyOk);
 
+    let reason = 'ok';
+    if (mdFail) reason = `mdStatus_fail:${md || '?'}`;
+    else if (basarili && classicOk && troyOk) reason = 'classic_and_troy_ok';
+    else if (basarili && classicOk) reason = 'classic_approved_or_00';
+    else if (basarili && troyOk) reason = 'troy_success_000';
+    else if (challengeOnly) reason = 'acs_challenge_no_payment_result';
+    else if (/not\s+authenticated/i.test(statusBlob)) reason = 'not_authenticated';
+    else if (!classicOk && !troyOk) reason = 'no_approved_no_00_no_troy';
+    else reason = 'rejected';
+
     const failMsg =
-      raw.mderrormessage ||
-      raw.MdErrorMessage ||
-      raw.errmsg ||
-      raw.ErrMsg ||
-      response ||
-      (troyMsgOk && !hasCaptureProof && !classicOk
-        ? 'Troy yanıtı Success ama onay/referans kodu yok — tahsilat kesinleşmedi'
-        : 'Ödeme başarısız');
+      challengeOnly
+        ? '3DS Challenge döndü ama ödeme sonucu (Approved/Troy) yok'
+        : raw.mderrormessage ||
+          raw.MdErrorMessage ||
+          raw.errmsg ||
+          raw.ErrMsg ||
+          response ||
+          'Ödeme başarısız';
+
+    const fieldSnap: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (/card|cvv|pan|number|expire|password|hash/i.test(k)) continue;
+      const t = String(v).trim();
+      if (!t) continue;
+      fieldSnap[k] = t.length > 120 ? `${t.slice(0, 120)}…` : t;
+    }
+
+    console.info(
+      `[garanti-callback] order=${orderId || '-'} success=${basarili} reason=${reason}` +
+        ` response=${response || '-'} proc=${proc || '-'} md=${md || '-'}` +
+        ` auth=${authCode ? 'yes' : 'no'} hostRef=${hostRef ? 'yes' : 'no'} retRef=${retRef ? 'yes' : 'no'}` +
+        ` troyMsg=${troyMsgOk ? 'yes' : 'no'} fields=${Object.keys(fieldSnap).join(',')}`,
+    );
 
     return {
       orderId,
       success: basarili,
-      responseCode: proc || response || (troyOk ? '000' : '') || md,
+      responseCode: proc || acqReturn || returnCode || response || (troyOk ? '000' : '') || md,
       message: basarili ? 'Approved' : failMsg,
       raw: {
         ...raw,
@@ -277,6 +317,23 @@ export const garantiGateway: PaymentGateway = {
         HostRefNum: hostRef,
         RetrefNum: retRef,
         Rrn: retRef || hostRef,
+        _diag: JSON.stringify({
+          reason,
+          response: response || null,
+          proc: proc || null,
+          acqReturn: acqReturn || null,
+          returnCode: returnCode || null,
+          approvedFlag: approvedFlag || null,
+          mdStatus: md || null,
+          hasAuthCode: Boolean(authCode),
+          hasHostRef: Boolean(hostRef),
+          hasRetRef: Boolean(retRef),
+          troyMsgOk,
+          classicOk,
+          troyOk,
+          challengeOnly,
+          fields: fieldSnap,
+        }),
       },
       needsProvision: false,
     };

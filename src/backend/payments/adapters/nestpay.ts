@@ -189,15 +189,35 @@ export const nestpayGateway: PaymentGateway = {
       }
     }
 
-    const success =
-      hashOk &&
-      (procReturnCode === '00' ||
-        procReturnCode === '000' ||
-        response.toLowerCase() === 'approved') &&
-      (mdStatus === '' || mdStatus === '1' || mdStatus === '2' || mdStatus === '3' || mdStatus === '4');
+    const codeOk =
+      procReturnCode === '00' ||
+      procReturnCode === '000' ||
+      response.toLowerCase() === 'approved';
+    const mdOk =
+      mdStatus === '' ||
+      mdStatus === '1' ||
+      mdStatus === '2' ||
+      mdStatus === '3' ||
+      mdStatus === '4';
+    const success = hashOk && codeOk && mdOk;
+
+    let reason = 'ok';
+    if (!hashOk) reason = 'hash_mismatch';
+    else if (!mdOk) reason = `mdStatus_fail:${mdStatus || '?'}`;
+    else if (!codeOk) reason = 'no_approved_no_00';
+    else reason = 'classic_approved_or_00';
+
+    const authCode = (raw.AuthCode || raw.authCode || '').trim();
+    const hostRef = (raw.HostRefNum || raw.hostrefnum || raw.HostReferenceNumber || '').trim();
 
     const storetype = (raw.storetype || '').toLowerCase();
     const needsProvision = storetype === '3d' && success;
+
+    console.info(
+      `[nestpay-callback] order=${orderId || '-'} success=${success} reason=${reason}` +
+        ` proc=${procReturnCode || '-'} response=${response || '-'} md=${mdStatus || '-'}` +
+        ` auth=${authCode ? 'yes' : 'no'} hostRef=${hostRef ? 'yes' : 'no'} hashOk=${hashOk}`,
+    );
 
     return {
       orderId,
@@ -208,7 +228,22 @@ export const nestpayGateway: PaymentGateway = {
         raw.errmsg ||
         raw.mdErrorMsg ||
         (success ? 'NestPay 3D başarılı' : 'NestPay 3D başarısız'),
-      raw,
+      raw: {
+        ...raw,
+        AuthCode: authCode,
+        HostRefNum: hostRef,
+        _diag: JSON.stringify({
+          reason,
+          proc: procReturnCode || null,
+          response: response || null,
+          mdStatus: mdStatus || null,
+          hashOk,
+          codeOk,
+          mdOk,
+          hasAuthCode: Boolean(authCode),
+          hasHostRef: Boolean(hostRef),
+        }),
+      },
       needsProvision,
       secure: needsProvision
         ? {

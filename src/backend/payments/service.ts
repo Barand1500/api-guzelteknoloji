@@ -305,15 +305,35 @@ export async function completeTenantPayment(sessionId: string, outcome: "ok" | "
         verified.raw?.hostlogkey ||
         verified.raw?.HostRefNum ||
         verified.raw?.hostrefnum ||
+        verified.raw?.RetrefNum ||
+        verified.raw?.retrefnum ||
         verified.raw?.Rrn ||
         verified.raw?.HostReferenceNumber ||
         verified.raw?.paymentId ||
         verified.raw?.TransId ||
         "";
+      let diag: Record<string, unknown> | undefined;
+      try {
+        if (verified.raw?._diag) diag = JSON.parse(verified.raw._diag) as Record<string, unknown>;
+      } catch {
+        diag = undefined;
+      }
+      const diagReason =
+        typeof diag?.reason === "string"
+          ? diag.reason
+          : success
+            ? "ok"
+            : !verified.success
+              ? "adapter_reject"
+              : outcome !== "ok" && !strongOk
+                ? "fail_url_without_strongOk"
+                : "parse_fail";
       const summary = JSON.stringify({
         source: "central",
         adapter: gateway.id,
         at: new Date().toISOString(),
+        outcome,
+        strongOk,
         responseCode: safeText(verified.responseCode, 80),
         message: safeText(verified.message, 500),
         hashOk: Boolean(verified.success),
@@ -321,6 +341,7 @@ export async function completeTenantPayment(sessionId: string, outcome: "ok" | "
         bankOrderId: safeText(verified.orderId || session.order_id, 255) || undefined,
         authCode: safeText(authCode, 80) || undefined,
         referenceCode: safeText(referenceCode, 120) || undefined,
+        diag,
       });
       const [paymentRows] = await tenant.query<any[]>(
         "SELECT id,tutar FROM odemeler WHERE odeme_no=? AND durum=3 LIMIT 2",
@@ -342,14 +363,30 @@ export async function completeTenantPayment(sessionId: string, outcome: "ok" | "
       }
       await pool.query("UPDATE api_payment_sessions SET status=? WHERE id=? AND status='processing'", [success ? "success" : "failure", id]);
       claimed = false;
-      // AnyPay Log Kayıtları — ameliyat sonrası teşhis (merkezi mi, ne oldu)
+      // AnyPay Log Kayıtları — neden çekildi / çekilmedi net görünsün
+      const detail = [
+        `adapter=${gateway.id}`,
+        `outcome=${outcome}`,
+        `strongOk=${strongOk}`,
+        `code=${safeText(verified.responseCode, 40) || "-"}`,
+        `auth=${authCode ? "var" : "yok"}`,
+        `ref=${referenceCode ? "var" : "yok"}`,
+        `reason=${diagReason}`,
+      ].join(" · ");
       const logText = success
-        ? `Ödeme - Merkezi API · BAŞARILI · #${session.order_id} · adapter=${gateway.id} · callback`
-        : `Ödeme - Merkezi API HATA · #${session.order_id} · ${safeText(verified.message || "Ödeme doğrulanamadı", 400)} · adapter=${gateway.id}`;
+        ? `Ödeme - Merkezi API · BAŞARILI · #${session.order_id} · ${detail}`
+        : `Ödeme - Merkezi API HATA · #${session.order_id} · ${safeText(verified.message || "Ödeme doğrulanamadı", 220)} · ${detail}`;
       await tenant
         .execute("INSERT INTO log (kullanici_id, tarih, islem) VALUES (NULL, NOW(), ?)", [logText.slice(0, 65000)])
         .catch(() => undefined);
-      console.info(`[central-payment] company=${company.companyId} stage=callback result=${success ? "success" : "failure"} adapter=${gateway.id}`);
+      console.info(
+        `[central-payment] company=${company.companyId} stage=callback` +
+          ` result=${success ? "success" : "failure"} adapter=${gateway.id}` +
+          ` outcome=${outcome} strongOk=${strongOk}` +
+          ` code=${safeText(verified.responseCode, 40) || "-"}` +
+          ` auth=${authCode ? "yes" : "no"} ref=${referenceCode ? "yes" : "no"}` +
+          ` reason=${diagReason}`,
+      );
       return {
         target: resolveReturnTarget(origin, session.istek_no),
         status: success ? "success" : "failure",
