@@ -286,7 +286,16 @@ export async function completeTenantPayment(sessionId: string, outcome: "ok" | "
           message: verified.message || "3D doğrulandı ancak provizyon tamamlanamadı",
         };
       }
-      const success = outcome === "ok" && verified.success && !verified.needsProvision;
+      // Banka failUrl’e basmış olsa bile parse kesin başarıysa (00/Approved) kabul
+      const strongOk =
+        verified.success &&
+        (verified.responseCode === "00" ||
+          verified.responseCode === "000" ||
+          verified.message === "Approved");
+      const success =
+        verified.success &&
+        !verified.needsProvision &&
+        (outcome === "ok" || strongOk);
       const authCode =
         verified.raw?.AuthCode ||
         verified.raw?.authCode ||

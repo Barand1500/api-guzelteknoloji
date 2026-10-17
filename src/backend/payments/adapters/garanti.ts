@@ -239,17 +239,18 @@ export const garantiGateway: PaymentGateway = {
       .filter(Boolean)
       .join(' ');
 
-    // Klasik: Response=Approved · ProcReturnCode=00
-    // Troy kart: TROY Gateway Result [Code: '000', Message: 'Success'] (Response boş kalabiliyor)
+    // Klasik: Response=Approved · ProcReturnCode=00/000
+    // Troy: TROY Gateway Result [Code: '000', Message: 'Success'] (Response boş kalabiliyor)
+    // mdStatus 0/5–9 → 3D başarısız; boş veya 1–4 kabul
     const troyOk =
       /TROY\s+Gateway\s+Result/i.test(statusBlob) &&
       /Code:\s*'0{2,3}'/i.test(statusBlob) &&
       /Message:\s*'Success'/i.test(statusBlob);
-    const basarili =
-      response.toLowerCase() === 'approved' ||
-      proc === '00' ||
-      proc === '000' ||
-      troyOk;
+    const md = (raw.mdstatus || raw.mdStatus || raw.MdStatus || '').trim();
+    const mdFail = md !== '' && !['1', '2', '3', '4'].includes(md);
+    const approved =
+      response.toLowerCase() === 'approved' || proc === '00' || proc === '000' || troyOk;
+    const basarili = approved && !mdFail;
 
     const failMsg =
       raw.mderrormessage ||
@@ -262,7 +263,7 @@ export const garantiGateway: PaymentGateway = {
     return {
       orderId,
       success: basarili,
-      responseCode: proc || response || (troyOk ? '000' : ''),
+      responseCode: proc || response || (troyOk ? '000' : '') || md,
       message: basarili ? 'Approved' : failMsg,
       raw: {
         ...raw,

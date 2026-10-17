@@ -191,7 +191,9 @@ export const nestpayGateway: PaymentGateway = {
 
     const success =
       hashOk &&
-      (procReturnCode === '00' || response === 'Approved') &&
+      (procReturnCode === '00' ||
+        procReturnCode === '000' ||
+        response.toLowerCase() === 'approved') &&
       (mdStatus === '' || mdStatus === '1' || mdStatus === '2' || mdStatus === '3' || mdStatus === '4');
 
     const storetype = (raw.storetype || '').toLowerCase();
