@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
 import type {
   CallbackResult,
+  FinalizeCallbackInput,
   Initiate3dInput,
   Initiate3dResult,
   PaymentGateway,
+  PosCredentials,
   ReversePaymentInput,
   ReversePaymentResult,
 } from '../types.js';
@@ -99,6 +101,14 @@ async function postGvpsXml(apiUrl: string, xml: string): Promise<string> {
   const raw = await response.text();
   if (!response.ok) throw new Error(`Garanti API hatası: ${response.status}`);
   return raw;
+}
+
+function resolveGvpsUrl(pos: PosCredentials): string {
+  const explicit = (pos.apiUrl || pos.xmlUrl || '').trim();
+  if (explicit) return explicit;
+  return resolveMode(pos.gateway3dUrl) === 'TEST'
+    ? 'https://sanalposprovtest.garanti.com.tr/VPServlet'
+    : 'https://sanalposprov.garanti.com.tr/VPServlet';
 }
 
 export function looksLikeGaranti(pos: {
@@ -242,8 +252,6 @@ export const garantiGateway: PaymentGateway = {
       .filter(Boolean)
       .join(' ');
 
-    // Referans STATUS: Approved | ProcReturnCode 00/000 | TROY Code 000 Success
-    // Troy kartlarda Response boş kalıp sadece mderrormessage içinde TROY Success gelebiliyor.
     const troyMsgOk =
       /TROY\s+Gateway\s+Result/i.test(statusBlob) &&
       /Code:\s*'0{2,3}'/i.test(statusBlob) &&
@@ -251,45 +259,71 @@ export const garantiGateway: PaymentGateway = {
     const authCode = (raw.authcode || raw.AuthCode || '').trim();
     const hostRef = (raw.hostrefnum || raw.HostRefNum || '').trim();
     const retRef = (raw.retrefnum || raw.RetrefNum || '').trim();
+    const hasCaptureProof = Boolean(authCode || hostRef || retRef);
     const md = (raw.mdstatus || raw.mdStatus || raw.MdStatus || '').trim();
     const mdFail = md !== '' && !['1', '2', '3', '4'].includes(md);
+    const mdAuthOk = ['1', '2', '3', '4'].includes(md);
+    // proc=92 vb. banka reddi — Troy metni yanıltıcı olabilir (3DS OK, çekim değil)
+    const hardFail = proc !== '' && proc !== '00' && proc !== '000';
     const classicOk =
-      response.toLowerCase() === 'approved' ||
-      proc === '00' ||
-      proc === '000' ||
-      acqReturn === '00' ||
-      acqReturn === '000' ||
-      returnCode === '00' ||
-      returnCode === '000' ||
-      approvedFlag === 'true' ||
-      approvedFlag === '1' ||
-      approvedFlag === 'yes';
-    const troyOk = troyMsgOk;
+      !hardFail &&
+      (response.toLowerCase() === 'approved' ||
+        proc === '00' ||
+        proc === '000' ||
+        acqReturn === '00' ||
+        acqReturn === '000' ||
+        returnCode === '00' ||
+        returnCode === '000' ||
+        approvedFlag === 'true' ||
+        approvedFlag === '1' ||
+        approvedFlag === 'yes');
+    // Troy: mesaj OK + gerçek çekim kanıtı (auth/ref) veya klasik 00 — tek başına yetmez
+    const troyOk = troyMsgOk && !hardFail && (classicOk || hasCaptureProof);
+    const cavv = (raw.cavv || raw.Cavv || '').trim();
+    const eci = (raw.eci || raw.Eci || '').trim();
+    const xid = (raw.xid || raw.Xid || raw.XID || '').trim();
+    const mdToken = (raw.md || raw.MD || '').trim();
+    const hasSecure = Boolean(cavv && mdToken && xid);
+    // 3D model: SMS OK, Approved yok → GVPS sales ile çek
+    const needsProvision = !classicOk && !troyOk && !hardFail && !mdFail && mdAuthOk && hasSecure;
     const challengeOnly =
       /Challenge\s+authentication\s+via\s+ACS/i.test(statusBlob) &&
       !classicOk &&
-      !troyOk;
-    const basarili = !mdFail && (classicOk || troyOk);
+      !troyOk &&
+      !needsProvision;
+    const basarili = !mdFail && !hardFail && (classicOk || troyOk || needsProvision);
 
     let reason = 'ok';
     if (mdFail) reason = `mdStatus_fail:${md || '?'}`;
-    else if (basarili && classicOk && troyOk) reason = 'classic_and_troy_ok';
+    else if (hardFail && proc === '92')
+      reason = troyMsgOk
+        ? 'proc_92_declined_troy_msg_not_capture'
+        : 'proc_92_declined';
+    else if (hardFail) reason = `proc_declined:${proc}`;
     else if (basarili && classicOk) reason = 'classic_approved_or_00';
-    else if (basarili && troyOk) reason = 'troy_success_000';
+    else if (basarili && troyOk) reason = 'troy_success_with_capture';
+    else if (needsProvision) reason = 'md_ok_needs_gvps_provision';
+    else if (troyMsgOk && !hasCaptureProof)
+      reason = 'troy_success_without_auth_or_ref';
     else if (challengeOnly) reason = 'acs_challenge_no_payment_result';
     else if (/not\s+authenticated/i.test(statusBlob)) reason = 'not_authenticated';
-    else if (!classicOk && !troyOk) reason = 'no_approved_no_00_no_troy';
-    else reason = 'rejected';
+    else reason = 'no_approved_no_00_no_capture';
 
     const failMsg =
-      challengeOnly
-        ? '3DS Challenge döndü ama ödeme sonucu (Approved/Troy) yok'
-        : raw.mderrormessage ||
-          raw.MdErrorMessage ||
-          raw.errmsg ||
-          raw.ErrMsg ||
-          response ||
-          'Ödeme başarısız';
+      hardFail && proc === '92'
+        ? 'Garanti kod 92: çekim reddedildi (PROVAUT şifre/hash/terminal veya bankada 3DPay tanımı)'
+        : hardFail
+          ? `Garanti kod ${proc}: işlem reddedildi`
+          : challengeOnly
+            ? '3DS Challenge döndü ama ödeme sonucu yok'
+            : troyMsgOk && !hasCaptureProof
+              ? 'Troy Success var ama Auth/HostRef yok — para çekilmedi'
+              : raw.mderrormessage ||
+                raw.MdErrorMessage ||
+                raw.errmsg ||
+                raw.ErrMsg ||
+                response ||
+                'Ödeme başarısız';
 
     const fieldSnap: Record<string, string> = {};
     for (const [k, v] of Object.entries(raw)) {
@@ -300,17 +334,17 @@ export const garantiGateway: PaymentGateway = {
     }
 
     console.info(
-      `[garanti-callback] order=${orderId || '-'} success=${basarili} reason=${reason}` +
+      `[garanti-callback] order=${orderId || '-'} success=${basarili && !needsProvision} reason=${reason}` +
         ` response=${response || '-'} proc=${proc || '-'} md=${md || '-'}` +
         ` auth=${authCode ? 'yes' : 'no'} hostRef=${hostRef ? 'yes' : 'no'} retRef=${retRef ? 'yes' : 'no'}` +
-        ` troyMsg=${troyMsgOk ? 'yes' : 'no'} fields=${Object.keys(fieldSnap).join(',')}`,
+        ` troyMsg=${troyMsgOk ? 'yes' : 'no'} needsProvision=${needsProvision} secure=${hasSecure}`,
     );
 
     return {
       orderId,
       success: basarili,
       responseCode: proc || acqReturn || returnCode || response || (troyOk ? '000' : '') || md,
-      message: basarili ? 'Approved' : failMsg,
+      message: basarili && !needsProvision ? 'Approved' : needsProvision ? '3D OK — GVPS provizyon' : failMsg,
       raw: {
         ...raw,
         AuthCode: authCode,
@@ -325,18 +359,169 @@ export const garantiGateway: PaymentGateway = {
           returnCode: returnCode || null,
           approvedFlag: approvedFlag || null,
           mdStatus: md || null,
+          hardFail,
           hasAuthCode: Boolean(authCode),
           hasHostRef: Boolean(hostRef),
           hasRetRef: Boolean(retRef),
+          hasSecure,
           troyMsgOk,
           classicOk,
           troyOk,
+          needsProvision,
           challengeOnly,
           fields: fieldSnap,
         }),
       },
-      needsProvision: false,
+      needsProvision,
+      secure: needsProvision
+        ? {
+            secureId: xid,
+            secureEcomInd: eci,
+            secureData: cavv,
+            secureMd: mdToken,
+            mdStatus: md,
+          }
+        : undefined,
     };
+  },
+
+  /** 3D model: SMS sonrası GVPS sales — para burada çekilir */
+  async finalizeCallback(input: FinalizeCallbackInput): Promise<CallbackResult> {
+    const raw: Record<string, string> = {};
+    for (const [k, v] of Object.entries(input.body)) {
+      if (v == null) continue;
+      raw[k] = String(v);
+    }
+
+    const merchantId = input.pos.merchantId.trim();
+    const terminalId =
+      input.pos.terminalSafeId.replace(/\D/g, '').trim() || input.pos.terminalSafeId.trim();
+    const password = input.pos.terminalPassword.trim();
+    const orderNo = (raw.orderid || raw.orderId || raw.oid || input.orderId || '').trim();
+    const amount =
+      (raw.txnamount || raw.txnAmount || '').trim() ||
+      (input.amount != null ? amountCents(input.amount) : '');
+    const currency = (raw.txncurrencycode || raw.txnCurrencyCode || '949').trim() || '949';
+    const installment = (raw.txninstallmentcount || raw.txnInstallmentCount || '').trim();
+    const cavv = (raw.cavv || raw.Cavv || '').trim();
+    const eci = (raw.eci || raw.Eci || '').trim();
+    const xid = (raw.xid || raw.Xid || raw.XID || '').trim();
+    const mdToken = (raw.md || raw.MD || '').trim();
+    const ip = (input.clientIp || raw.customeripaddress || '127.0.0.1').replace(/^::ffff:/, '');
+    const email = (raw.customeremailaddress || 'musteri@anypay.com.tr').trim();
+    const apiUrl = resolveGvpsUrl(input.pos);
+
+    if (!merchantId || !terminalId || !password) {
+      return {
+        orderId: orderNo,
+        success: false,
+        responseCode: 'CFG',
+        message: 'Garanti provizyon: POS kimlik / şifre eksik',
+        raw,
+        needsProvision: false,
+      };
+    }
+    if (!orderNo || !amount || !cavv || !mdToken || !xid) {
+      return {
+        orderId: orderNo,
+        success: false,
+        responseCode: '3D',
+        message: 'Garanti provizyon: 3D alanları eksik (cavv/md/xid/tutar)',
+        raw,
+        needsProvision: false,
+      };
+    }
+
+    const hashData = refundVoidHash({ orderNo, terminalId, amount, password });
+    const mode = resolveMode(input.pos.gateway3dUrl);
+    const xml = `<?xml version="1.0" encoding="ISO-8859-9"?>
+<GVPSRequest>
+  <Mode>${mode}</Mode>
+  <Version>v0.01</Version>
+  <Terminal>
+    <ProvUserID>PROVAUT</ProvUserID>
+    <HashData>${xmlEscape(hashData)}</HashData>
+    <UserID>PROVAUT</UserID>
+    <ID>${xmlEscape(terminalId)}</ID>
+    <MerchantID>${xmlEscape(merchantId)}</MerchantID>
+  </Terminal>
+  <Customer>
+    <IPAddress>${xmlEscape(ip)}</IPAddress>
+    <EmailAddress>${xmlEscape(email)}</EmailAddress>
+  </Customer>
+  <Card>
+    <Number></Number>
+    <ExpireDate></ExpireDate>
+    <CVV2></CVV2>
+  </Card>
+  <Order>
+    <OrderID>${xmlEscape(orderNo)}</OrderID>
+    <GroupID></GroupID>
+  </Order>
+  <Transaction>
+    <Type>sales</Type>
+    <InstallmentCnt>${xmlEscape(installment)}</InstallmentCnt>
+    <Amount>${xmlEscape(amount)}</Amount>
+    <CurrencyCode>${xmlEscape(currency)}</CurrencyCode>
+    <CardholderPresentCode>13</CardholderPresentCode>
+    <MotoInd>N</MotoInd>
+    <Secure3D>
+      <AuthenticationCode>${xmlEscape(cavv)}</AuthenticationCode>
+      <SecurityLevel>${xmlEscape(eci)}</SecurityLevel>
+      <TxnID>${xmlEscape(xid)}</TxnID>
+      <Md>${xmlEscape(mdToken)}</Md>
+    </Secure3D>
+  </Transaction>
+</GVPSRequest>`;
+
+    try {
+      const xmlRaw = await postGvpsXml(apiUrl, xml);
+      const code = xmlTag(xmlRaw, 'Code') || xmlTag(xmlRaw, 'ProcReturnCode') || xmlTag(xmlRaw, 'ResponseCode');
+      const msg =
+        xmlTag(xmlRaw, 'Message') ||
+        xmlTag(xmlRaw, 'ErrorMsg') ||
+        xmlTag(xmlRaw, 'ErrorMessage') ||
+        xmlTag(xmlRaw, 'SysErrMsg');
+      const auth = xmlTag(xmlRaw, 'AuthCode');
+      const retref = xmlTag(xmlRaw, 'RetrefNum') || xmlTag(xmlRaw, 'HostRefNum');
+      const ok = code === '00' || msg.toLowerCase() === 'approved';
+      console.info(
+        `[garanti-provision] order=${orderNo} ok=${ok} code=${code || '-'} auth=${auth ? 'yes' : 'no'} ref=${retref ? 'yes' : 'no'}`,
+      );
+      return {
+        orderId: orderNo,
+        success: ok,
+        responseCode: code || (ok ? '00' : 'ERR'),
+        message: ok
+          ? 'Approved'
+          : code === '92'
+            ? 'Garanti provizyon 92: PROVAUT şifre/hash/terminal hatalı veya 3DPay tanımı yok'
+            : msg || 'Garanti provizyon başarısız',
+        raw: {
+          ...raw,
+          AuthCode: auth,
+          HostRefNum: retref,
+          RetrefNum: retref,
+          Rrn: retref,
+          _diag: JSON.stringify({
+            reason: ok ? 'gvps_provision_ok' : `gvps_provision_fail:${code || 'ERR'}`,
+            code: code || null,
+            hasAuthCode: Boolean(auth),
+            hasRetRef: Boolean(retref),
+          }),
+        },
+        needsProvision: false,
+      };
+    } catch (err) {
+      return {
+        orderId: orderNo,
+        success: false,
+        responseCode: 'NET',
+        message: err instanceof Error ? err.message : 'Garanti provizyon ağ hatası',
+        raw,
+        needsProvision: false,
+      };
+    }
   },
 
   /** void / refund GVPS XML — referans garanti.adapter.js iptal/iade */

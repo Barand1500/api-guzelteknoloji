@@ -265,7 +265,8 @@ export async function completeTenantPayment(sessionId: string, outcome: "ok" | "
         };
       }
 
-      if (outcome === "ok" && parsed.success && parsed.needsProvision && gateway.finalizeCallback) {
+      // failUrl’e basssa bile 3D alanları varsa GVPS ile çek (Garanti 3D modeli)
+      if (parsed.success && parsed.needsProvision && gateway.finalizeCallback) {
         try {
           verified = await gateway.finalizeCallback({
             body,
@@ -277,7 +278,7 @@ export async function completeTenantPayment(sessionId: string, outcome: "ok" | "
           verified = { ...parsed, success: false, needsProvision: false, message: "Provizyon tamamlanamadı" };
         }
       }
-      // needsProvision kaldıysa (finalize yok) — başarısız yazma; adamlar 3D_PAY/finalize modeli
+      // needsProvision kaldıysa (finalize yok) — başarısız yazma
       if (verified.needsProvision) {
         verified = {
           ...verified,
@@ -286,12 +287,10 @@ export async function completeTenantPayment(sessionId: string, outcome: "ok" | "
           message: verified.message || "3D doğrulandı ancak provizyon tamamlanamadı",
         };
       }
-      // Banka failUrl’e basmış olsa bile parse kesin başarıysa (00/Approved) kabul
+      // Sadece gerçek banka kodu 00/000 (message=Approved + kod 92 tuzağı yok)
       const strongOk =
         verified.success &&
-        (verified.responseCode === "00" ||
-          verified.responseCode === "000" ||
-          verified.message === "Approved");
+        (verified.responseCode === "00" || verified.responseCode === "000");
       const success =
         verified.success &&
         !verified.needsProvision &&
