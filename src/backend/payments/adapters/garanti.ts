@@ -223,19 +223,47 @@ export const garantiGateway: PaymentGateway = {
     const orderId =
       raw.orderid || raw.orderId || raw.oid || raw.Oid || '';
     const response = (raw.response || raw.Response || '').trim();
-    const basarili = response === 'Approved';
+    const proc = (raw.procreturncode || raw.ProcReturnCode || '').trim();
+    const statusBlob = [
+      raw.mderrormessage,
+      raw.MdErrorMessage,
+      raw.errmsg,
+      raw.ErrMsg,
+      raw.message,
+      raw.Message,
+      raw.hostmessage,
+      raw.HostMessage,
+      raw.gatewaymessage,
+      raw.GatewayMessage,
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    // Klasik: Response=Approved · ProcReturnCode=00
+    // Troy kart: TROY Gateway Result [Code: '000', Message: 'Success'] (Response boş kalabiliyor)
+    const troyOk =
+      /TROY\s+Gateway\s+Result/i.test(statusBlob) &&
+      /Code:\s*'0{2,3}'/i.test(statusBlob) &&
+      /Message:\s*'Success'/i.test(statusBlob);
+    const basarili =
+      response.toLowerCase() === 'approved' ||
+      proc === '00' ||
+      proc === '000' ||
+      troyOk;
+
+    const failMsg =
+      raw.mderrormessage ||
+      raw.MdErrorMessage ||
+      raw.errmsg ||
+      raw.ErrMsg ||
+      response ||
+      'Ödeme başarısız';
 
     return {
       orderId,
       success: basarili,
-      responseCode: raw.procreturncode || raw.ProcReturnCode || response,
-      message: basarili
-        ? 'Approved'
-        : raw.mderrormessage ||
-          raw.MdErrorMessage ||
-          raw.errmsg ||
-          raw.ErrMsg ||
-          'Ödeme başarısız',
+      responseCode: proc || response || (troyOk ? '000' : ''),
+      message: basarili ? 'Approved' : failMsg,
       raw: {
         ...raw,
         AuthCode: raw.authcode || raw.AuthCode || raw.procreturncode || '',
