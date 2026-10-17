@@ -240,17 +240,21 @@ export const garantiGateway: PaymentGateway = {
       .join(' ');
 
     // Klasik: Response=Approved · ProcReturnCode=00/000
-    // Troy: TROY Gateway Result [Code: '000', Message: 'Success'] (Response boş kalabiliyor)
-    // mdStatus 0/5–9 → 3D başarısız; boş veya 1–4 kabul
-    const troyOk =
+    // Troy metni tek başına yetmez — gerçek çekimde authcode / hostref / retref gelir.
+    const troyMsgOk =
       /TROY\s+Gateway\s+Result/i.test(statusBlob) &&
       /Code:\s*'0{2,3}'/i.test(statusBlob) &&
       /Message:\s*'Success'/i.test(statusBlob);
+    const authCode = (raw.authcode || raw.AuthCode || '').trim();
+    const hostRef = (raw.hostrefnum || raw.HostRefNum || '').trim();
+    const retRef = (raw.retrefnum || raw.RetrefNum || '').trim();
+    const hasCaptureProof = Boolean(authCode || hostRef || retRef);
     const md = (raw.mdstatus || raw.mdStatus || raw.MdStatus || '').trim();
     const mdFail = md !== '' && !['1', '2', '3', '4'].includes(md);
-    const approved =
-      response.toLowerCase() === 'approved' || proc === '00' || proc === '000' || troyOk;
-    const basarili = approved && !mdFail;
+    const classicOk =
+      response.toLowerCase() === 'approved' || proc === '00' || proc === '000';
+    const troyOk = troyMsgOk && (classicOk || hasCaptureProof);
+    const basarili = !mdFail && (classicOk || troyOk);
 
     const failMsg =
       raw.mderrormessage ||
@@ -258,7 +262,9 @@ export const garantiGateway: PaymentGateway = {
       raw.errmsg ||
       raw.ErrMsg ||
       response ||
-      'Ödeme başarısız';
+      (troyMsgOk && !hasCaptureProof && !classicOk
+        ? 'Troy yanıtı Success ama onay/referans kodu yok — tahsilat kesinleşmedi'
+        : 'Ödeme başarısız');
 
     return {
       orderId,
@@ -267,10 +273,10 @@ export const garantiGateway: PaymentGateway = {
       message: basarili ? 'Approved' : failMsg,
       raw: {
         ...raw,
-        AuthCode: raw.authcode || raw.AuthCode || raw.procreturncode || '',
-        HostRefNum: raw.hostrefnum || raw.HostRefNum || '',
-        RetrefNum: raw.retrefnum || raw.RetrefNum || '',
-        Rrn: raw.retrefnum || raw.RetrefNum || raw.hostrefnum || raw.HostRefNum || '',
+        AuthCode: authCode,
+        HostRefNum: hostRef,
+        RetrefNum: retRef,
+        Rrn: retRef || hostRef,
       },
       needsProvision: false,
     };
